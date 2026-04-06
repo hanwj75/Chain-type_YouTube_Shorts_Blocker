@@ -9,6 +9,12 @@ import type {
 } from "@youtube-shorts-chain-blocker/domain";
 
 export type ErrorCode =
+  | "AUTH_REQUIRED"
+  | "INVALID_AUTH"
+  | "INVALID_REQUEST"
+  | "INTERNAL_ERROR"
+  | "METHOD_NOT_ALLOWED"
+  | "GROUP_CONTEXT_REQUIRED"
   | "ALREADY_LOCKED"
   | "ALREADY_UNLOCKED"
   | "ACTIVE_REQUEST_EXISTS"

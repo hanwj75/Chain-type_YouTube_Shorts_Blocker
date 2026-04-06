@@ -3,6 +3,7 @@ import worker, {
   GroupDurableObject,
   GroupRegistryDurableObject,
 } from "./index.js";
+import { decideShortsBlocking } from "../../extension/src/index.js";
 import type {
   DurableObjectId,
   DurableObjectNamespace,
@@ -287,6 +288,7 @@ const run = async (): Promise<void> => {
   assert(lockedStateBody.data.state === "LOCKED", "final user state mismatch");
 
   await runDiscordInteractionFlowTest();
+  await runLocalIntegrationFlowTest();
 
   console.log("worker tests passed");
 };
@@ -592,6 +594,319 @@ const runPublicOAuthFlowTest = async (): Promise<void> => {
   }
 };
 
+const runLocalIntegrationFlowTest = async (): Promise<void> => {
+  const env = createTestEnv();
+  await createGroup(env, "group-1", ["A", "B", "C"]);
+  const extensionSession = await createExtensionSession(env, "A");
+  const extension = createLocalExtensionHarness(
+    env,
+    "group-1",
+    "A",
+    extensionSession,
+  );
+  const initialState = await extension.sync();
+
+  assert(
+    initialState?.state === "UNLOCKED",
+    "extension initial sync must read UNLOCKED for new user",
+  );
+
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "Ed25519",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const publicKeyBytes = new Uint8Array(
+    await crypto.subtle.exportKey("raw", keyPair.publicKey),
+  );
+  env.DISCORD_PUBLIC_KEY = bytesToHex(publicKeyBytes);
+
+  const originalFetch = globalThis.fetch;
+  const outboundRequests: Array<{ url: string; body: string }> = [];
+
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    outboundRequests.push({
+      url: String(input),
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+
+    return new Response(null, { status: 200 });
+  };
+
+  try {
+    const createLockResponse = await callSignedDiscordInteraction(env, keyPair.privateKey, {
+      id: "local-flow-1",
+      application_id: "app-1",
+      type: 2,
+      token: "local-flow-token-1",
+      member: {
+        user: { id: "B" },
+      },
+      data: {
+        id: "cmd-lock-a",
+        name: "lock",
+        options: [{ name: "user", type: 6, value: "A" }],
+      },
+    });
+    const createLockBody = await createLockResponse.json();
+
+    assert(createLockResponse.status === 200, "discord lock request must be created");
+    assert(
+      createLockBody.data.content.includes("Request LOCK_REQUEST for <@A> is open."),
+      "discord create message must describe the open lock request",
+    );
+
+    const lockApproveButton = createLockBody.data.components[0].components[0];
+
+    const approveByC = await callSignedDiscordInteraction(env, keyPair.privateKey, {
+      id: "local-flow-2",
+      application_id: "app-1",
+      type: 3,
+      token: "local-flow-token-2",
+      member: {
+        user: { id: "C" },
+      },
+      data: {
+        custom_id: lockApproveButton.custom_id,
+        component_type: 2,
+      },
+    });
+    const approveByCBody = await approveByC.json();
+
+    assert(
+      approveByC.status === 200 && approveByCBody.type === 6,
+      "first lock vote must defer the Discord message update",
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const firstPatch = JSON.parse(outboundRequests[0]?.body ?? "{}") as {
+      content?: string;
+      components?: Array<{ components: Array<{ disabled?: boolean }> }>;
+    };
+
+    assert(
+      firstPatch.content?.includes("Approve 1, reject 0."),
+      "first lock vote must update the Discord message with live counts",
+    );
+
+    const approveByB = await callSignedDiscordInteraction(env, keyPair.privateKey, {
+      id: "local-flow-3",
+      application_id: "app-1",
+      type: 3,
+      token: "local-flow-token-3",
+      member: {
+        user: { id: "B" },
+      },
+      data: {
+        custom_id: lockApproveButton.custom_id,
+        component_type: 2,
+      },
+    });
+    const approveByBBody = await approveByB.json();
+
+    assert(
+      approveByB.status === 200 && approveByBBody.type === 6,
+      "second lock vote must defer the Discord message update",
+    );
+
+    const staleExtensionDecision = extension.getBlockingDecision("/shorts/locked");
+
+    assert(
+      !staleExtensionDecision.shouldRedirect,
+      "extension must keep the stale UNLOCKED cache until the next sync",
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const lockedState = await getUserStateForTest(env, "group-1", "A", extensionSession);
+
+    assert(
+      lockedState === "LOCKED",
+      "two approve votes must lock the target user through Worker and Durable Object state",
+    );
+
+    const resolvedLockPatch = JSON.parse(
+      outboundRequests[outboundRequests.length - 1]?.body ?? "{}",
+    ) as {
+      content?: string;
+      components?: Array<{ components: Array<{ disabled?: boolean }> }>;
+    };
+
+    assert(
+      resolvedLockPatch.content?.includes("Final state: LOCKED."),
+      "resolved lock request must publish the final LOCKED result",
+    );
+    assert(
+      resolvedLockPatch.components?.[0]?.components.every(
+        (component) => component.disabled === true,
+      ),
+      "resolved lock request must disable all Discord vote buttons",
+    );
+
+    const syncedLockedState = await extension.sync();
+
+    assert(
+      syncedLockedState?.state === "LOCKED",
+      "extension sync must eventually observe the Worker LOCKED state",
+    );
+
+    const blockedShortsDecision = extension.getBlockingDecision("/shorts/locked");
+
+    assert(
+      blockedShortsDecision.shouldRedirect,
+      "extension must block direct /shorts/ access after the LOCKED sync",
+    );
+
+    const createUnlockResponse = await callSignedDiscordInteraction(env, keyPair.privateKey, {
+      id: "local-flow-4",
+      application_id: "app-1",
+      type: 2,
+      token: "local-flow-token-4",
+      member: {
+        user: { id: "B" },
+      },
+      data: {
+        id: "cmd-unlock-a",
+        name: "unlock",
+        options: [{ name: "user", type: 6, value: "A" }],
+      },
+    });
+    const createUnlockBody = await createUnlockResponse.json();
+
+    assert(createUnlockResponse.status === 200, "discord unlock request must be created");
+    assert(
+      createUnlockBody.data.content.includes("Request UNLOCK_REQUEST for <@A> is open."),
+      "discord create message must describe the open unlock request",
+    );
+
+    const unlockApproveButton = createUnlockBody.data.components[0].components[0];
+    const unlockRejectButton = createUnlockBody.data.components[0].components[1];
+
+    const [unlockApproveByB, unlockRejectByC] = await Promise.all([
+      callSignedDiscordInteraction(env, keyPair.privateKey, {
+        id: "local-flow-5",
+        application_id: "app-1",
+        type: 3,
+        token: "local-flow-token-5",
+        member: {
+          user: { id: "B" },
+        },
+        data: {
+          custom_id: unlockApproveButton.custom_id,
+          component_type: 2,
+        },
+      }),
+      callSignedDiscordInteraction(env, keyPair.privateKey, {
+        id: "local-flow-6",
+        application_id: "app-1",
+        type: 3,
+        token: "local-flow-token-6",
+        member: {
+          user: { id: "C" },
+        },
+        data: {
+          custom_id: unlockRejectButton.custom_id,
+          component_type: 2,
+        },
+      }),
+    ]);
+    const unlockApproveByBBody = await unlockApproveByB.json();
+    const unlockRejectByCBody = await unlockRejectByC.json();
+
+    assert(
+      unlockApproveByB.status === 200 && unlockApproveByBBody.type === 6,
+      "concurrent unlock approve vote must succeed",
+    );
+    assert(
+      unlockRejectByC.status === 200 && unlockRejectByCBody.type === 6,
+      "concurrent unlock reject vote must succeed",
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const unlockRequestId = getRequestIdFromButtonCustomId(unlockApproveButton.custom_id);
+    const unlockRequest = await getRequestForTest(env, "group-1", unlockRequestId);
+
+    assert(
+      unlockRequest.status === "RESOLVED" && unlockRequest.votes.length === 2,
+      "concurrent unlock votes must resolve exactly once with two stored votes",
+    );
+
+    const approveVotes = unlockRequest.votes.filter((vote) => vote.choice === "APPROVE").length;
+    const rejectVotes = unlockRequest.votes.filter((vote) => vote.choice === "REJECT").length;
+
+    assert(
+      approveVotes === 1 && rejectVotes === 1,
+      "unlock request must record the expected 1 approve / 1 reject tie",
+    );
+
+    const finalStateAfterTie = await getUserStateForTest(env, "group-1", "A", extensionSession);
+
+    assert(
+      finalStateAfterTie === "LOCKED",
+      "1:1 unlock vote tie must keep the current LOCKED state",
+    );
+
+    const resolvedUnlockVote = await callSignedDiscordInteraction(env, keyPair.privateKey, {
+      id: "local-flow-7",
+      application_id: "app-1",
+      type: 3,
+      token: "local-flow-token-7",
+      member: {
+        user: { id: "B" },
+      },
+      data: {
+        custom_id: unlockApproveButton.custom_id,
+        component_type: 2,
+      },
+    });
+    const resolvedUnlockVoteBody = await resolvedUnlockVote.json();
+
+    assert(
+      resolvedUnlockVote.status === 200 &&
+        resolvedUnlockVoteBody.data.content.includes("already resolved"),
+      "resolved unlock request must reject further Discord button processing",
+    );
+
+    const resolvedUnlockPatch = JSON.parse(
+      outboundRequests[outboundRequests.length - 1]?.body ?? "{}",
+    ) as {
+      content?: string;
+      components?: Array<{ components: Array<{ disabled?: boolean }> }>;
+    };
+
+    assert(
+      resolvedUnlockPatch.content?.includes("Final state: LOCKED."),
+      "tie resolution must publish the unchanged LOCKED final state",
+    );
+    assert(
+      resolvedUnlockPatch.components?.[0]?.components.every(
+        (component) => component.disabled === true,
+      ),
+      "resolved tie request must disable Discord vote buttons",
+    );
+
+    const syncedTieState = await extension.sync();
+
+    assert(
+      syncedTieState?.state === "LOCKED",
+      "extension sync after tie must keep the LOCKED state from Worker",
+    );
+    assert(
+      extension.getBlockingDecision("/shorts/tie").shouldRedirect,
+      "extension must keep blocking Shorts after the tie preserves LOCKED state",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+};
+
 const createGroup = async (
   env: WorkerEnv,
   groupId: string,
@@ -665,6 +980,87 @@ const createExtensionSession = async (
   };
 
   return completeBody.data.sessionToken;
+};
+
+const createLocalExtensionHarness = (
+  env: WorkerEnv,
+  groupId: string,
+  userId: string,
+  sessionToken: string,
+): {
+  sync: () => Promise<{ state: "LOCKED" | "UNLOCKED"; syncedAt: number } | null>;
+  getBlockingDecision: (pathname: string) => ReturnType<typeof decideShortsBlocking>;
+} => {
+  let cachedState: { state: "LOCKED" | "UNLOCKED"; syncedAt: number } | null = null;
+
+  return {
+    sync: async () => {
+      const state = await getUserStateForTest(env, groupId, userId, sessionToken);
+
+      cachedState = {
+        state,
+        syncedAt: Date.now(),
+      };
+
+      return cachedState;
+    },
+    getBlockingDecision: (pathname: string) =>
+      decideShortsBlocking({
+        state: cachedState?.state ?? null,
+        pathname,
+      }),
+  };
+};
+
+const getUserStateForTest = async (
+  env: WorkerEnv,
+  groupId: string,
+  userId: string,
+  sessionToken: string,
+): Promise<"LOCKED" | "UNLOCKED"> => {
+  const response = await callWorker(env, "GET", `/users/${userId}/state`, {
+    headers: authorizedHeaders("extension", groupId, sessionToken),
+  });
+  const body = await response.json();
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch user state for integration test.");
+  }
+
+  return body.data.state as "LOCKED" | "UNLOCKED";
+};
+
+const getRequestForTest = async (
+  env: WorkerEnv,
+  groupId: string,
+  requestId: string,
+): Promise<{
+  status: string;
+  votes: Array<{ voterId: string; choice: "APPROVE" | "REJECT" }>;
+}> => {
+  const response = await callWorker(env, "GET", `/requests/${requestId}`, {
+    headers: authorizedHeaders("discord", groupId),
+  });
+  const body = await response.json();
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch request for integration test.");
+  }
+
+  return body.data.request as {
+    status: string;
+    votes: Array<{ voterId: string; choice: "APPROVE" | "REJECT" }>;
+  };
+};
+
+const getRequestIdFromButtonCustomId = (customId: string): string => {
+  const [, , requestId] = customId.split("|");
+
+  if (!requestId) {
+    throw new Error("Vote button custom id did not include a request id.");
+  }
+
+  return requestId;
 };
 
 const callWorker = (

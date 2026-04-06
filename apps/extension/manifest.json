@@ -6,13 +6,13 @@
   "permissions": ["storage", "tabs", "scripting", "alarms", "activeTab"],
   "host_permissions": ["https://www.youtube.com/*"],
   "background": {
-    "service_worker": "dist/background.js",
+    "service_worker": "dist/apps/extension/src/background.js",
     "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["dist/content.js"],
+      "js": ["dist/apps/extension/src/content.js"],
       "run_at": "document_idle"
     }
   ],

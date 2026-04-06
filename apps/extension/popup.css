@@ -1,17 +1,21 @@
 :root {
   color-scheme: light;
-  font-family: "Segoe UI", sans-serif;
+  font-family: "Noto Sans KR", "Malgun Gothic", sans-serif;
 }
 
 body {
   margin: 0;
-  min-width: 320px;
-  background: linear-gradient(180deg, #fff9ef 0%, #f5f1e8 100%);
-  color: #1c1917;
+  min-width: 360px;
+  background:
+    radial-gradient(circle at top right, rgba(245, 158, 11, 0.18), transparent 32%),
+    linear-gradient(180deg, #fffaf2 0%, #f1ede2 100%);
+  color: #1f2937;
 }
 
 .popup {
-  padding: 16px;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
 }
 
 .popup__header {
@@ -25,6 +29,7 @@ body {
 .popup__header h1 {
   margin: 0;
   font-size: 18px;
+  font-weight: 800;
 }
 
 .popup__header p {
@@ -36,6 +41,35 @@ body {
 .popup__icon {
   width: 40px;
   height: 40px;
+}
+
+.popup__section {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(214, 211, 209, 0.9);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.popup__section h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.popup__section-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.popup__caption {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #57534e;
 }
 
 .popup__form {
@@ -50,13 +84,15 @@ body {
   font-weight: 600;
 }
 
-.popup__form input {
+.popup__form input,
+.popup__form select {
   box-sizing: border-box;
   width: 100%;
   border: 1px solid #d6d3d1;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 12px;
   font: inherit;
+  background: #fff;
 }
 
 .popup__actions {
@@ -72,5 +108,78 @@ body {
   background: #1f2937;
   color: #fff;
   font: inherit;
+  font-weight: 700;
   cursor: pointer;
+}
+
+.popup__actions--single {
+  grid-template-columns: 1fr;
+}
+
+.popup__ghost-button {
+  border: 1px solid #d6d3d1;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.popup__admin {
+  display: grid;
+  gap: 12px;
+}
+
+.popup__admin-status {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #7c2d12;
+}
+
+.popup__votes {
+  display: grid;
+  gap: 8px;
+}
+
+.popup__votes-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.popup__vote-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.popup__vote-button {
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 10px;
+  background: #e5e7eb;
+  color: #111827;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.popup__vote-button.is-approve {
+  background: #bbf7d0;
+  color: #166534;
+}
+
+.popup__vote-button.is-reject {
+  background: #fecaca;
+  color: #991b1b;
+}
+
+.popup__vote-button.is-target {
+  background: #cbd5e1;
+  color: #334155;
+  cursor: not-allowed;
 }

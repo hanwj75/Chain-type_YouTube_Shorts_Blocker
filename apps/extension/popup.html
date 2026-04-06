@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Shorts Blocker</title>
+    <title>쇼츠 차단기</title>
     <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>
@@ -11,37 +11,103 @@
       <header class="popup__header">
         <img class="popup__icon" src="./assets/icon.svg" alt="" />
         <div>
-          <h1>Shorts Blocker</h1>
-          <p id="status-text">Loading state...</p>
-          <p id="identity-text">Not signed in.</p>
+          <h1>쇼츠 차단기</h1>
+          <p id="status-text">상태를 불러오는 중...</p>
+          <p id="identity-text">로그인되지 않았습니다.</p>
         </div>
       </header>
 
-      <form id="settings-form" class="popup__form">
-        <label>
-          Worker API Base URL
-          <input id="api-base-url" name="apiBaseUrl" type="url" required />
-        </label>
+      <section class="popup__section">
+        <h2>기본 설정</h2>
+        <p class="popup__caption">실제 Worker와 연동해서 상태를 동기화할 때 사용합니다.</p>
+        <form id="settings-form" class="popup__form">
+          <label>
+            Worker API 주소
+            <input id="api-base-url" name="apiBaseUrl" type="url" required />
+          </label>
 
-        <label>
-          Group ID
-          <input id="group-id" name="groupId" type="text" required />
-        </label>
+          <label>
+            그룹 ID
+            <input id="group-id" name="groupId" type="text" required />
+          </label>
 
+          <div class="popup__actions">
+            <button type="submit">저장</button>
+            <button id="sync-button" type="button">지금 동기화</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="popup__section">
+        <h2>Discord 로그인</h2>
+        <p class="popup__caption">Worker 주소를 먼저 저장한 뒤 로그인 흐름을 시작합니다.</p>
         <div class="popup__actions">
-          <button type="submit">Save</button>
-          <button id="sync-button" type="button">Sync Now</button>
+          <button id="login-button" type="button">Discord 로그인</button>
+          <button id="poll-button" type="button">로그인 확인</button>
         </div>
-      </form>
 
-      <div class="popup__actions">
-        <button id="login-button" type="button">Discord Login</button>
-        <button id="poll-button" type="button">Check Login</button>
-      </div>
+        <div class="popup__actions popup__actions--single">
+          <button id="logout-button" type="button">로그아웃</button>
+        </div>
+      </section>
 
-      <div class="popup__actions">
-        <button id="logout-button" type="button">Logout</button>
-      </div>
+      <section class="popup__section">
+        <div class="popup__section-header">
+          <div>
+            <h2>관리자 모드</h2>
+            <p class="popup__caption">로컬 시뮬레이션으로 3인 투표 결과를 혼자 테스트합니다.</p>
+          </div>
+          <button id="admin-mode-button" type="button" class="popup__ghost-button">관리자 모드 켜기</button>
+        </div>
+
+        <div id="admin-panel" class="popup__admin" hidden>
+          <p id="admin-status-text" class="popup__admin-status">현재 테스트 상태: UNLOCKED</p>
+
+          <div class="popup__form">
+            <label>
+              요청자
+              <select id="admin-requester-id">
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+              </select>
+            </label>
+
+            <label>
+              대상자
+              <select id="admin-target-id">
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+              </select>
+            </label>
+
+            <label>
+              요청 종류
+              <select id="admin-request-type">
+                <option value="LOCK_REQUEST">잠금 요청</option>
+                <option value="UNLOCK_REQUEST">잠금 해제 요청</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="popup__votes">
+            <p class="popup__votes-title">투표 토글</p>
+            <div class="popup__vote-grid">
+              <button type="button" class="popup__vote-button" data-member-id="A">A: 보류</button>
+              <button type="button" class="popup__vote-button" data-member-id="B">B: 보류</button>
+              <button type="button" class="popup__vote-button" data-member-id="C">C: 보류</button>
+            </div>
+          </div>
+
+          <div class="popup__actions">
+            <button id="admin-run-button" type="button">시뮬레이션 실행</button>
+            <button id="admin-reset-button" type="button">토글 초기화</button>
+          </div>
+
+          <p id="admin-summary-text" class="popup__caption">아직 실행 결과가 없습니다.</p>
+        </div>
+      </section>
     </main>
 
     <script type="module" src="./dist/apps/extension/src/popup.js"></script>

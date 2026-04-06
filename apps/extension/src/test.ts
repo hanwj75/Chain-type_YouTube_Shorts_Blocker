@@ -1,4 +1,5 @@
 import {
+  simulateAdminRequest,
   buildShortsHideCss,
   decideShortsBlocking,
   getRedirectTarget,
@@ -66,6 +67,40 @@ const run = (): void => {
   assert(
     spaNavigationDecision.shouldRedirect,
     "LOCKED state must reapply blocking after SPA navigation",
+  );
+
+  const adminLockSimulation = simulateAdminRequest({
+    currentState: "UNLOCKED",
+    requesterId: "B",
+    targetUserId: "A",
+    requestType: "LOCK_REQUEST",
+    votes: {
+      A: "NONE",
+      B: "APPROVE",
+      C: "APPROVE",
+    },
+  });
+
+  assert(
+    adminLockSimulation.ok && adminLockSimulation.nextState === "LOCKED",
+    "admin simulation must lock the target after two approve votes",
+  );
+
+  const adminTieSimulation = simulateAdminRequest({
+    currentState: "LOCKED",
+    requesterId: "B",
+    targetUserId: "A",
+    requestType: "UNLOCK_REQUEST",
+    votes: {
+      A: "NONE",
+      B: "APPROVE",
+      C: "REJECT",
+    },
+  });
+
+  assert(
+    adminTieSimulation.ok && adminTieSimulation.nextState === "LOCKED",
+    "admin simulation tie must keep the current LOCKED state",
   );
 
   console.log("extension tests passed");

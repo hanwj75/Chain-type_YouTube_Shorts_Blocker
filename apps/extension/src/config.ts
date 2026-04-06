@@ -3,6 +3,7 @@ export const STORAGE_KEYS = {
   config: "shortsBlockerConfig",
   cachedState: "shortsBlockerCachedState",
   cachedAt: "shortsBlockerCachedStateAt",
+  adminMode: "shortsBlockerAdminMode",
 } as const;
 
 export type ExtensionConfig = {
@@ -17,7 +18,13 @@ export type ExtensionConfig = {
 export type CachedBlockState = {
   state: "LOCKED" | "UNLOCKED";
   syncedAt: number | null;
-  source: "worker" | "cache";
+  source: "worker" | "cache" | "admin";
+};
+
+export type AdminModeState = {
+  enabled: boolean;
+  currentState: "LOCKED" | "UNLOCKED";
+  lastSummary: string | null;
 };
 
 export const isConfigured = (config: Partial<ExtensionConfig>): config is ExtensionConfig => {

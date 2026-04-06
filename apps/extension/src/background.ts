@@ -8,11 +8,14 @@ import type { UserState } from "@youtube-shorts-chain-blocker/domain";
 import {
   EXTENSION_SYNC_ALARM,
   STORAGE_KEYS,
+  type AdminModeState,
   type CachedBlockState,
   type ExtensionConfig,
 } from "./config.js";
 import { isConfigured } from "./config.js";
+import { simulateAdminRequest } from "./index.js";
 import type {
+  AdminSimulationResponse,
   ExtensionMessage,
   ExtensionMessageResponse,
   ExtensionTabMessage,
@@ -54,6 +57,10 @@ const handleMessage = async (
     return { ok: true, data: await syncAndBroadcastState() };
   }
 
+  if (message.type === "GET_ADMIN_MODE_STATE") {
+    return { ok: true, data: await getAdminModeState() };
+  }
+
   if (message.type === "GET_EXTENSION_CONFIG") {
     return { ok: true, data: await getExtensionConfig() };
   }
@@ -70,7 +77,7 @@ const handleMessage = async (
     const auth = await startDiscordOAuth();
 
     if (!auth) {
-      return { ok: false, message: "Failed to start Discord OAuth." };
+      return { ok: false, message: "Discord OAuth 시작에 실패했습니다." };
     }
 
     await chrome.tabs.create({ url: auth.authUrl });
@@ -81,7 +88,7 @@ const handleMessage = async (
     const mapping = await pollDiscordOAuth();
 
     if (!mapping) {
-      return { ok: false, message: "OAuth is still pending or failed." };
+      return { ok: false, message: "로그인이 아직 완료되지 않았거나 실패했습니다." };
     }
 
     return { ok: true, data: mapping };
@@ -91,15 +98,33 @@ const handleMessage = async (
     return { ok: true, data: await getSessionInfo() };
   }
 
+  if (message.type === "SET_ADMIN_MODE") {
+    const adminMode = await setAdminModeEnabled(message.payload.enabled);
+
+    if (adminMode.enabled) {
+      await syncAndBroadcastState();
+    }
+
+    return { ok: true, data: adminMode };
+  }
+
+  if (message.type === "RUN_ADMIN_SIMULATION") {
+    const result = await runAdminSimulation(message.payload);
+
+    return result.ok
+      ? { ok: true, data: result.data }
+      : { ok: false, message: result.message };
+  }
+
   if (message.type === "LOGOUT") {
     const revoked = await logoutSession();
 
     return revoked
       ? { ok: true, data: null }
-      : { ok: false, message: "Logout failed." };
+      : { ok: false, message: "로그아웃에 실패했습니다." };
   }
 
-  return { ok: false, message: "Unsupported message." };
+  return { ok: false, message: "지원하지 않는 요청입니다." };
 };
 
 const syncAndBroadcastState = async (): Promise<CachedBlockState | null> => {
@@ -113,6 +138,16 @@ const syncAndBroadcastState = async (): Promise<CachedBlockState | null> => {
 };
 
 const syncBlockState = async (): Promise<CachedBlockState | null> => {
+  const adminMode = await getAdminModeState();
+
+  if (adminMode.enabled) {
+    return {
+      state: adminMode.currentState,
+      syncedAt: Date.now(),
+      source: "admin",
+    };
+  }
+
   const config = await getExtensionConfig();
 
   if (!config || !isConfigured(config)) {
@@ -330,6 +365,88 @@ const getLastKnownState = async (): Promise<CachedBlockState | null> => {
     state,
     syncedAt: syncedAt ?? null,
     source: "cache",
+  };
+};
+
+const getAdminModeState = async (): Promise<AdminModeState> => {
+  const values = await chrome.storage.local.get(STORAGE_KEYS.adminMode);
+  const stored = values[STORAGE_KEYS.adminMode] as AdminModeState | undefined;
+
+  return (
+    stored ?? {
+      enabled: false,
+      currentState: "UNLOCKED",
+      lastSummary: null,
+    }
+  );
+};
+
+const setAdminModeEnabled = async (enabled: boolean): Promise<AdminModeState> => {
+  const current = await getAdminModeState();
+  const lastKnownState = await getLastKnownState();
+  const nextState: AdminModeState = {
+    enabled,
+    currentState: enabled ? lastKnownState?.state ?? current.currentState : current.currentState,
+    lastSummary: enabled ? current.lastSummary : null,
+  };
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.adminMode]: nextState,
+  });
+
+  return nextState;
+};
+
+const runAdminSimulation = async (payload: Extract<ExtensionMessage, { type: "RUN_ADMIN_SIMULATION" }>["payload"]): Promise<
+  | { ok: true; data: AdminSimulationResponse }
+  | { ok: false; message: string }
+> => {
+  const adminMode = await getAdminModeState();
+
+  if (!adminMode.enabled) {
+    return {
+      ok: false,
+      message: "관리자 모드를 먼저 켜야 합니다.",
+    };
+  }
+
+  const result = simulateAdminRequest({
+    currentState: adminMode.currentState,
+    requesterId: payload.requesterId,
+    targetUserId: payload.targetUserId,
+    requestType: payload.requestType,
+    votes: payload.votes,
+  });
+
+  if (!result.ok) {
+    return result;
+  }
+
+  const cachedState: CachedBlockState = {
+    state: result.nextState,
+    syncedAt: Date.now(),
+    source: "admin",
+  };
+  const nextAdminMode: AdminModeState = {
+    enabled: true,
+    currentState: result.nextState,
+    lastSummary: result.summary,
+  };
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.adminMode]: nextAdminMode,
+    [STORAGE_KEYS.cachedState]: cachedState.state,
+    [STORAGE_KEYS.cachedAt]: cachedState.syncedAt,
+  });
+
+  await broadcastState(cachedState);
+
+  return {
+    ok: true,
+    data: {
+      adminMode: nextAdminMode,
+      cachedState,
+    },
   };
 };
 

@@ -1,9 +1,12 @@
 {
   "name": "@youtube-shorts-chain-blocker/extension",
   "private": true,
+  "type": "module",
   "version": "0.0.0",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "npm run build && npm run test:run",
+    "test:run": "node --experimental-specifier-resolution=node dist/test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

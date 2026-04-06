@@ -2,8 +2,15 @@
   "name": "@youtube-shorts-chain-blocker/domain",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "npm run build && npm run test:run",
+    "test:run": "node --experimental-specifier-resolution=node dist/test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

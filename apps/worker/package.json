@@ -1,9 +1,16 @@
 {
   "name": "@youtube-shorts-chain-blocker/worker",
   "private": true,
+  "type": "module",
   "version": "0.0.0",
+  "dependencies": {
+    "@youtube-shorts-chain-blocker/api-contract": "*",
+    "@youtube-shorts-chain-blocker/domain": "*"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "npm run build && npm run test:run",
+    "test:run": "node --experimental-specifier-resolution=node dist/apps/worker/src/test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

@@ -15,6 +15,11 @@ export type Group = {
   members: [GroupMember, GroupMember, GroupMember]
 }
 
+export type GroupRecord = {
+  id: string
+  members: GroupMember[]
+}
+
 export type Vote = {
   voterId: string
   choice: VoteChoice
@@ -44,6 +49,7 @@ export type VoteResolution = {
 export const defaultUserState: UserState = 'UNLOCKED'
 
 export const MAX_VOTES_PER_REQUEST = 2
+export const GROUP_MEMBER_COUNT = 3
 
 export const countVotes = (
   votes: Vote[],
@@ -68,6 +74,73 @@ export const countVotes = (
 
 export const getRequestedState = (requestType: RequestType): UserState => {
   return requestType === 'LOCK_REQUEST' ? 'LOCKED' : 'UNLOCKED'
+}
+
+export const validateGroupMembers = (memberIds: string[]): ValidationResult => {
+  const uniqueMemberIds = [...new Set(memberIds)]
+
+  if (memberIds.length !== GROUP_MEMBER_COUNT) {
+    return {
+      ok: false,
+      reason: 'A group must contain exactly three members.',
+    }
+  }
+
+  if (uniqueMemberIds.length !== GROUP_MEMBER_COUNT) {
+    return {
+      ok: false,
+      reason: 'A group cannot contain duplicate members.',
+    }
+  }
+
+  if (uniqueMemberIds.some((memberId) => memberId.trim() === '')) {
+    return {
+      ok: false,
+      reason: 'Group members must have non-empty user ids.',
+    }
+  }
+
+  return { ok: true }
+}
+
+export const canCreateGroup = ({
+  groups,
+  memberIds,
+}: {
+  groups: GroupRecord[]
+  memberIds: string[]
+}): ValidationResult => {
+  const memberValidation = validateGroupMembers(memberIds)
+
+  if (!memberValidation.ok) {
+    return memberValidation
+  }
+
+  const conflictingMemberId = memberIds.find((memberId) =>
+    groups.some((group) =>
+      group.members.some((member) => member.userId === memberId),
+    ),
+  )
+
+  if (conflictingMemberId) {
+    return {
+      ok: false,
+      reason: 'A user can belong to only one active group.',
+    }
+  }
+
+  return { ok: true }
+}
+
+export const findGroupByUserId = (
+  groups: GroupRecord[],
+  userId: string,
+): GroupRecord | null => {
+  return (
+    groups.find((group) =>
+      group.members.some((member) => member.userId === userId),
+    ) ?? null
+  )
 }
 
 export const isTieVote = (votes: Vote[]): boolean => {

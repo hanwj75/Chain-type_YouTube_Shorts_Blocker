@@ -1,11 +1,16 @@
 import {
+  canCreateGroup,
   canCreateRequest,
   canVoteOnRequest,
   defaultUserState,
+  findGroupByUserId,
+  GROUP_MEMBER_COUNT,
   hasOpenRequestForTarget,
   resolveStateTransition,
   resolveVoteOutcome,
+  validateGroupMembers,
   type Group,
+  type GroupRecord,
   type StateChangeRequest,
 } from "./index.js";
 import { createInitialVotes } from "./test-helpers.js";
@@ -41,6 +46,34 @@ const resolvedRequest: StateChangeRequest = {
 
 const run = (): void => {
   assert(defaultUserState === "UNLOCKED", "default state must be UNLOCKED");
+  assert(GROUP_MEMBER_COUNT === 3, "group member count must stay 3");
+  assert(
+    validateGroupMembers(["A", "B", "C"]).ok,
+    "three unique users should form a valid group",
+  );
+  assert(
+    !validateGroupMembers(["A", "A", "C"]).ok,
+    "duplicate group members must be rejected",
+  );
+
+  const existingGroups: GroupRecord[] = [
+    {
+      id: "group-existing",
+      members: [{ userId: "A" }, { userId: "B" }, { userId: "C" }],
+    },
+  ];
+
+  assert(
+    !canCreateGroup({
+      groups: existingGroups,
+      memberIds: ["A", "D", "E"],
+    }).ok,
+    "user must not belong to more than one active group",
+  );
+  assert(
+    findGroupByUserId(existingGroups, "B")?.id === "group-existing",
+    "user group lookup should return the containing group",
+  );
 
   assert(
     canCreateRequest({

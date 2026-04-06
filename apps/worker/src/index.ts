@@ -1,8 +1,11 @@
 import type {
+  ApiResponse,
   CastVoteBody,
+  CreateGroupBody,
   CreateRequestBody,
+  RequestSummary,
 } from "@youtube-shorts-chain-blocker/api-contract";
-import type { RequestType, VoteChoice } from "@youtube-shorts-chain-blocker/domain";
+import type { Group, RequestType, VoteChoice } from "@youtube-shorts-chain-blocker/domain";
 import {
   castVoteInGroup,
   createInitialGroupDOState,
@@ -22,10 +25,16 @@ import {
   type ResolvedRequestOutcome,
   type StoredRequestRecord,
 } from "./group-do-model.js";
-import { authenticateRequest } from "./auth.js";
+import {
+  authenticateRequest,
+  exchangeDiscordOAuthCode,
+  fetchDiscordUserIdentity,
+} from "./auth.js";
 import type { ExecutionContext, WorkerEnv } from "./cloudflare.js";
+import { AuthDurableObject } from "./auth-do.js";
 import { handleDiscordInteraction } from "./discord.js";
 import { GroupDurableObject } from "./group-do.js";
+import { GroupRegistryDurableObject } from "./group-registry-do.js";
 import { buildCorsPreflightResponse, jsonError, withCors, jsonSuccess } from "./http.js";
 
 type WorkerHandler = (
@@ -49,9 +58,45 @@ const routes: RouteDefinition[] = [
     authRequired: false,
   },
   {
+    method: "POST",
+    pathname: /^\/auth\/discord\/start$/,
+    handler: handleStartDiscordOAuth,
+    authRequired: false,
+  },
+  {
+    method: "GET",
+    pathname: /^\/auth\/discord\/pending\/(?<authRequestId>[^/]+)$/,
+    handler: handleGetDiscordOAuthPending,
+    authRequired: false,
+  },
+  {
+    method: "GET",
+    pathname: /^\/auth\/discord\/callback$/,
+    handler: handleDiscordOAuthCallback,
+    authRequired: false,
+  },
+  {
+    method: "GET",
+    pathname: /^\/auth\/session$/,
+    handler: handleGetSession,
+    authRequired: false,
+  },
+  {
+    method: "POST",
+    pathname: /^\/auth\/logout$/,
+    handler: handleLogout,
+    authRequired: false,
+  },
+  {
     method: "GET",
     pathname: /^\/users\/(?<userId>[^/]+)\/state$/,
     handler: handleGetUserState,
+  },
+  {
+    method: "GET",
+    pathname: /^\/users\/(?<userId>[^/]+)\/group$/,
+    handler: handleGetUserGroup,
+    authRequired: false,
   },
   {
     method: "POST",
@@ -67,6 +112,18 @@ const routes: RouteDefinition[] = [
     method: "GET",
     pathname: /^\/requests\/(?<requestId>[^/]+)$/,
     handler: handleGetRequest,
+  },
+  {
+    method: "GET",
+    pathname: /^\/groups\/(?<groupId>[^/]+)$/,
+    handler: handleGetGroup,
+    authRequired: false,
+  },
+  {
+    method: "POST",
+    pathname: /^\/admin\/groups$/,
+    handler: handleCreateGroup,
+    authRequired: false,
   },
 ];
 
@@ -94,7 +151,7 @@ const worker = {
       }
 
       if (matchedRoute.authRequired !== false) {
-        const authenticatedClient = authenticateRequest(request, env);
+        const authenticatedClient = await authenticateRequest(request, env);
 
         if (!authenticatedClient) {
           return withCors(
@@ -130,7 +187,7 @@ const worker = {
 };
 
 export default worker;
-export { GroupDurableObject };
+export { AuthDurableObject, GroupDurableObject, GroupRegistryDurableObject };
 export {
   castVoteInGroup,
   createInitialGroupDOState,
@@ -161,6 +218,124 @@ type RouteDefinition = {
 async function handleHealth(): Promise<Response> {
   return jsonSuccess({
     status: "ok",
+  });
+}
+
+async function handleStartDiscordOAuth(
+  _request: Request,
+  env: WorkerEnv,
+): Promise<Response> {
+  return forwardToAuthDurableObject(env, "/internal/auth/discord/start", {
+    method: "POST",
+  });
+}
+
+async function handleGetDiscordOAuthPending(
+  _request: Request,
+  env: WorkerEnv,
+  _ctx: ExecutionContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  return forwardToAuthDurableObject(
+    env,
+    `/internal/auth/discord/pending/${params.authRequestId}`,
+    {
+      method: "GET",
+    },
+  );
+}
+
+async function handleDiscordOAuthCallback(
+  request: Request,
+  env: WorkerEnv,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+
+  if (!code || !state) {
+    return new Response("Missing OAuth code or state.", { status: 400 });
+  }
+
+  const token = await exchangeDiscordOAuthCode(code, env);
+
+  if (!token) {
+    return new Response("Discord OAuth token exchange failed.", { status: 401 });
+  }
+
+  const userIdentity = await fetchDiscordUserIdentity(token.accessToken);
+
+  if (!userIdentity) {
+    return new Response("Discord user verification failed.", { status: 401 });
+  }
+
+  const response = await forwardToAuthDurableObject(
+    env,
+    "/internal/auth/discord/callback",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        state,
+        discordUserId: userIdentity.discordUserId,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    return new Response("OAuth mapping registration failed.", { status: 401 });
+  }
+
+  return new Response(
+    "<!doctype html><html><body><script>window.close();</script><p>Discord login completed. You can return to the extension.</p></body></html>",
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+      },
+    },
+  );
+}
+
+async function handleGetSession(
+  request: Request,
+  env: WorkerEnv,
+): Promise<Response> {
+  const authorization = request.headers.get("authorization");
+
+  if (!authorization) {
+    return jsonError("AUTH_REQUIRED", "Missing session token.", {
+      status: 401,
+    });
+  }
+
+  return forwardToAuthDurableObject(env, "/internal/auth/session/verify", {
+    method: "GET",
+    headers: {
+      authorization,
+    },
+  });
+}
+
+async function handleLogout(
+  request: Request,
+  env: WorkerEnv,
+): Promise<Response> {
+  const authorization = request.headers.get("authorization");
+
+  if (!authorization) {
+    return jsonError("AUTH_REQUIRED", "Missing session token.", {
+      status: 401,
+    });
+  }
+
+  return forwardToAuthDurableObject(env, "/internal/auth/session/logout", {
+    method: "POST",
+    headers: {
+      authorization,
+    },
   });
 }
 
@@ -204,6 +379,37 @@ async function handleDiscordInteractions(
           method: "GET",
         }),
       ),
+    resolveGroupByUsers: async (userIds) => {
+      for (const userId of userIds) {
+        const response = await forwardToGroupRegistryDurableObject(
+          env,
+          `/internal/users/${userId}/group`,
+          {
+            method: "GET",
+          },
+        );
+
+        if (!response.ok) {
+          continue;
+        }
+
+        const payload = await parseApiResponse<{ group: Group }>(response);
+
+        if (!payload.success) {
+          continue;
+        }
+
+        const includesAllUsers = userIds.every((candidateUserId) =>
+          payload.data.group.members.some((member) => member.userId === candidateUserId),
+        );
+
+        if (includesAllUsers) {
+          return payload.data.group;
+        }
+      }
+
+      return null;
+    },
   });
 }
 
@@ -224,6 +430,21 @@ async function handleGetUserState(
   return forwardToGroupDurableObject(env, groupId, `/internal/users/${params.userId}/state`, {
     method: "GET",
   });
+}
+
+async function handleGetUserGroup(
+  _request: Request,
+  env: WorkerEnv,
+  _ctx: ExecutionContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  return forwardToGroupRegistryDurableObject(
+    env,
+    `/internal/users/${params.userId}/group`,
+    {
+      method: "GET",
+    },
+  );
 }
 
 async function handleCreateRequest(
@@ -310,6 +531,57 @@ async function handleGetRequest(
   });
 }
 
+async function handleGetGroup(
+  _request: Request,
+  env: WorkerEnv,
+  _ctx: ExecutionContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  return forwardToGroupRegistryDurableObject(
+    env,
+    `/internal/groups/${params.groupId}`,
+    {
+      method: "GET",
+    },
+  );
+}
+
+async function handleCreateGroup(
+  request: Request,
+  env: WorkerEnv,
+): Promise<Response> {
+  if (request.headers.get("authorization") !== `Bearer ${env.ADMIN_API_TOKEN}`) {
+    return jsonError("INVALID_AUTH", "Admin authentication failed.", {
+      status: 401,
+    });
+  }
+
+  const body = await parseJsonBody<CreateGroupBody>(request);
+
+  if (!body.ok) {
+    return body.response;
+  }
+
+  if (
+    !isNonEmptyString(body.value.groupId) ||
+    !Array.isArray(body.value.memberIds) ||
+    body.value.memberIds.length !== 3 ||
+    !body.value.memberIds.every(isNonEmptyString)
+  ) {
+    return jsonError("INVALID_REQUEST", "Invalid group payload.", {
+      status: 400,
+    });
+  }
+
+  return forwardToGroupRegistryDurableObject(env, "/internal/groups", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body.value),
+  });
+}
+
 const matchRoute = (
   request: Request,
 ): { handler: WorkerHandler; authRequired?: boolean; params: Record<string, string> } | null => {
@@ -356,8 +628,8 @@ const parseJsonBody = async <T>(
   }
 };
 
-const parseApiResponse = async <T>(response: Response): Promise<import("@youtube-shorts-chain-blocker/api-contract").ApiResponse<T>> => {
-  return (await response.json()) as import("@youtube-shorts-chain-blocker/api-contract").ApiResponse<T>;
+const parseApiResponse = async <T>(response: Response): Promise<ApiResponse<T>> => {
+  return (await response.json()) as ApiResponse<T>;
 };
 
 const validateCreateRequestBody = (
@@ -408,6 +680,28 @@ const forwardToGroupDurableObject = async (
       "x-group-id": groupId,
     },
   });
+};
+
+const forwardToAuthDurableObject = async (
+  env: WorkerEnv,
+  pathname: string,
+  init: RequestInit,
+): Promise<Response> => {
+  const objectId = env.AUTH_DO.idFromName("auth");
+  const stub = env.AUTH_DO.get(objectId);
+
+  return stub.fetch(`https://auth-do${pathname}`, init);
+};
+
+const forwardToGroupRegistryDurableObject = async (
+  env: WorkerEnv,
+  pathname: string,
+  init: RequestInit,
+): Promise<Response> => {
+  const objectId = env.GROUP_REGISTRY_DO.idFromName("groups");
+  const stub = env.GROUP_REGISTRY_DO.get(objectId);
+
+  return stub.fetch(`https://group-registry${pathname}`, init);
 };
 
 const getRequiredGroupId = (request: Request): string | null => {

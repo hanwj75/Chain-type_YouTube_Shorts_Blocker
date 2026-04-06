@@ -11,10 +11,14 @@ import type {
 export type ErrorCode =
   | "AUTH_REQUIRED"
   | "INVALID_AUTH"
+  | "AUTH_PENDING"
+  | "SESSION_NOT_FOUND"
   | "INVALID_REQUEST"
   | "INTERNAL_ERROR"
   | "METHOD_NOT_ALLOWED"
   | "GROUP_CONTEXT_REQUIRED"
+  | "INVALID_GROUP_MEMBERS"
+  | "USER_ALREADY_IN_GROUP"
   | "ALREADY_LOCKED"
   | "ALREADY_UNLOCKED"
   | "ACTIVE_REQUEST_EXISTS"
@@ -57,6 +61,30 @@ export type RequestSummary = {
 export type UserStateView = {
   userId: string;
   state: UserState;
+};
+
+export type UserIdentityMapping = {
+  extensionUserId: string;
+  discordUserId: string;
+  sessionToken: string;
+  expiresAt: number;
+};
+
+export type OAuthStartData = {
+  extensionUserId: string;
+  authRequestId: string;
+  authUrl: string;
+};
+
+export type OAuthPendingData = {
+  status: "PENDING" | "COMPLETED";
+  mapping: UserIdentityMapping | null;
+};
+
+export type SessionData = {
+  extensionUserId: string;
+  discordUserId: string;
+  expiresAt: number;
 };
 
 export type HealthData = {
@@ -112,6 +140,33 @@ export type GetGroupResponse = ApiResponse<{
   group: Group;
 }>;
 
+export type GetUserGroupResponse = ApiResponse<{
+  group: Group;
+}>;
+
+export type CreateGroupBody = {
+  groupId: string;
+  memberIds: [string, string, string];
+};
+
+export type CreateGroupResponse = ApiResponse<{
+  group: Group;
+}>;
+
+export type StartDiscordOAuthResponse = ApiResponse<OAuthStartData>;
+
+export type GetDiscordOAuthPendingParams = {
+  authRequestId: string;
+};
+
+export type GetDiscordOAuthPendingResponse = ApiResponse<OAuthPendingData>;
+
+export type GetSessionResponse = ApiResponse<SessionData>;
+
+export type LogoutResponse = ApiResponse<{
+  revoked: true;
+}>;
+
 export type ApiContract = {
   "/health": {
     GET: {
@@ -147,6 +202,39 @@ export type ApiContract = {
     GET: {
       params: GetGroupParams;
       response: GetGroupResponse;
+    };
+  };
+  "/users/:userId/group": {
+    GET: {
+      params: GetUserStateParams;
+      response: GetUserGroupResponse;
+    };
+  };
+  "/admin/groups": {
+    POST: {
+      body: CreateGroupBody;
+      response: CreateGroupResponse;
+    };
+  };
+  "/auth/discord/start": {
+    POST: {
+      response: StartDiscordOAuthResponse;
+    };
+  };
+  "/auth/discord/pending/:authRequestId": {
+    GET: {
+      params: GetDiscordOAuthPendingParams;
+      response: GetDiscordOAuthPendingResponse;
+    };
+  };
+  "/auth/session": {
+    GET: {
+      response: GetSessionResponse;
+    };
+  };
+  "/auth/logout": {
+    POST: {
+      response: LogoutResponse;
     };
   };
 };

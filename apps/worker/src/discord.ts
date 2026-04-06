@@ -9,7 +9,7 @@ import {
   type VoteChoice,
 } from "@youtube-shorts-chain-blocker/domain";
 import type { ExecutionContext, WorkerEnv } from "./cloudflare.js";
-import { findGroupByMemberIds } from "./groups.js";
+import type { Group } from "@youtube-shorts-chain-blocker/domain";
 
 export type DiscordInteraction =
   | DiscordPingInteraction
@@ -110,6 +110,7 @@ export const handleDiscordInteraction = async ({
   createRequest,
   castVote,
   getRequest,
+  resolveGroupByUsers,
 }: {
   request: Request;
   env: WorkerEnv;
@@ -128,6 +129,7 @@ export const handleDiscordInteraction = async ({
     groupId: string,
     requestId: string,
   ) => Promise<ApiResponse<{ request: RequestSummary }>>;
+  resolveGroupByUsers: (userIds: string[]) => Promise<Group | null>;
 }): Promise<Response> => {
   const rawBody = await request.text();
   const verified = await verifyDiscordSignature(request, rawBody, env);
@@ -149,7 +151,11 @@ export const handleDiscordInteraction = async ({
   }
 
   if (interaction.type === 2) {
-    return handleApplicationCommand(interaction, env, createRequest);
+    return handleApplicationCommand(
+      interaction,
+      createRequest,
+      resolveGroupByUsers,
+    );
   }
 
   if (interaction.type === 3) {
@@ -173,12 +179,12 @@ export const handleDiscordInteraction = async ({
 
 const handleApplicationCommand = async (
   interaction: DiscordApplicationCommandInteraction,
-  env: WorkerEnv,
   createRequest: (groupId: string, body: {
     requesterId: string;
     targetUserId: string;
     type: RequestType;
   }) => Promise<ApiResponse<{ request: RequestSummary }>>,
+  resolveGroupByUsers: (userIds: string[]) => Promise<Group | null>,
 ): Promise<Response> => {
   const requesterId = getInteractionUserId(interaction);
   const targetUserId = getCommandUserId(interaction.data.options);
@@ -188,7 +194,7 @@ const handleApplicationCommand = async (
     return ephemeralDiscordMessage("Invalid Discord command payload.");
   }
 
-  const group = findGroupByMemberIds(env.GROUPS_JSON, [requesterId, targetUserId]);
+  const group = await resolveGroupByUsers([requesterId, targetUserId]);
 
   if (!group) {
     return ephemeralDiscordMessage("Requester and target must be in the same 3-person group.");
@@ -392,10 +398,14 @@ const formatErrorMessage = (errorCode: ErrorCode): string => {
   const messages: Record<ErrorCode, string> = {
     AUTH_REQUIRED: "Authentication is required.",
     INVALID_AUTH: "Authentication failed.",
+    AUTH_PENDING: "Authentication is still pending.",
+    SESSION_NOT_FOUND: "Session was not found.",
     INVALID_REQUEST: "Invalid request payload.",
     INTERNAL_ERROR: "Internal error.",
     METHOD_NOT_ALLOWED: "Method not allowed.",
     GROUP_CONTEXT_REQUIRED: "Group context is required.",
+    INVALID_GROUP_MEMBERS: "Invalid group member configuration.",
+    USER_ALREADY_IN_GROUP: "A user already belongs to another group.",
     ALREADY_LOCKED: "The target user is already locked.",
     ALREADY_UNLOCKED: "The target user is already unlocked.",
     ACTIVE_REQUEST_EXISTS: "An active request already exists for the target user.",

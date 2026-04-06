@@ -1,4 +1,8 @@
-import worker, { GroupDurableObject } from "./index.js";
+import worker, {
+  AuthDurableObject,
+  GroupDurableObject,
+  GroupRegistryDurableObject,
+} from "./index.js";
 import type {
   DurableObjectId,
   DurableObjectNamespace,
@@ -26,7 +30,7 @@ class MemoryDurableObjectStorage implements DurableObjectStorage {
   }
 }
 
-class MemoryDurableObjectNamespace implements DurableObjectNamespace {
+class MemoryGroupDurableObjectNamespace implements DurableObjectNamespace {
   private readonly instances = new Map<string, GroupDurableObject>();
 
   constructor(private readonly env: WorkerEnv) {}
@@ -61,12 +65,83 @@ class MemoryDurableObjectNamespace implements DurableObjectNamespace {
   }
 }
 
+class MemoryAuthDurableObjectNamespace implements DurableObjectNamespace {
+  private readonly instances = new Map<string, AuthDurableObject>();
+
+  constructor(private readonly env: WorkerEnv) {}
+
+  idFromName(name: string): DurableObjectId {
+    return { name };
+  }
+
+  get(id: DurableObjectId) {
+    if (!this.instances.has(id.name)) {
+      const state: DurableObjectState = {
+        storage: new MemoryDurableObjectStorage(),
+      };
+
+      this.instances.set(id.name, new AuthDurableObject(state, this.env));
+    }
+
+    const instance = this.instances.get(id.name);
+
+    if (!instance) {
+      throw new Error("Auth Durable Object instance was not created.");
+    }
+
+    return {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        const request =
+          input instanceof Request ? input : new Request(input, init);
+
+        return instance.fetch(request);
+      },
+    };
+  }
+}
+
+class MemoryGroupRegistryDurableObjectNamespace implements DurableObjectNamespace {
+  private readonly instances = new Map<string, GroupRegistryDurableObject>();
+
+  idFromName(name: string): DurableObjectId {
+    return { name };
+  }
+
+  get(id: DurableObjectId) {
+    if (!this.instances.has(id.name)) {
+      const state: DurableObjectState = {
+        storage: new MemoryDurableObjectStorage(),
+      };
+
+      this.instances.set(id.name, new GroupRegistryDurableObject(state));
+    }
+
+    const instance = this.instances.get(id.name);
+
+    if (!instance) {
+      throw new Error("Group Registry Durable Object instance was not created.");
+    }
+
+    return {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        const request =
+          input instanceof Request ? input : new Request(input, init);
+
+        return instance.fetch(request);
+      },
+    };
+  }
+}
+
 const ctx: ExecutionContext = {
   waitUntil() {},
 };
 
 const run = async (): Promise<void> => {
   const env = createTestEnv();
+  await createGroup(env, "group-1", ["A", "B", "C"]);
+  const extensionSession = await createExtensionSession(env, "A");
+  await runPublicOAuthFlowTest();
 
   const health = await callWorker(env, "GET", "/health");
   const healthBody = await health.json();
@@ -89,7 +164,7 @@ const run = async (): Promise<void> => {
   );
 
   const initialState = await callWorker(env, "GET", "/users/A/state", {
-    headers: authorizedHeaders("extension", "group-1"),
+    headers: authorizedHeaders("extension", "group-1", extensionSession),
   });
   const initialStateBody = await initialState.json();
 
@@ -100,7 +175,7 @@ const run = async (): Promise<void> => {
   );
 
   const createdRequest = await callWorker(env, "POST", "/requests", {
-    headers: authorizedHeaders("extension"),
+    headers: authorizedHeaders("extension", undefined, extensionSession),
     body: JSON.stringify({
       groupId: "group-1",
       requesterId: "A",
@@ -181,7 +256,7 @@ const run = async (): Promise<void> => {
   );
 
   const lockedState = await callWorker(env, "GET", "/users/A/state", {
-    headers: authorizedHeaders("extension", "group-1"),
+    headers: authorizedHeaders("extension", "group-1", extensionSession),
   });
   const lockedStateBody = await lockedState.json();
 
@@ -195,25 +270,25 @@ const run = async (): Promise<void> => {
 
 const createTestEnv = (): WorkerEnv => {
   const env = {
-    GROUPS_JSON: JSON.stringify([
-      {
-        id: "group-1",
-        members: ["A", "B", "C"],
-      },
-    ]),
     ALLOWED_ORIGINS: "*",
-    EXTENSION_API_TOKEN: "extension-token",
+    ADMIN_API_TOKEN: "admin-token",
     DISCORD_API_TOKEN: "discord-token",
     DISCORD_API_BASE_URL: "https://discord.test/api/v10",
+    DISCORD_CLIENT_ID: "client-id",
+    DISCORD_CLIENT_SECRET: "client-secret",
+    DISCORD_OAUTH_REDIRECT_URI: "https://worker.test/auth/discord/callback",
   } as WorkerEnv;
 
-  env.GROUP_DO = new MemoryDurableObjectNamespace(env);
+  env.GROUP_DO = new MemoryGroupDurableObjectNamespace(env);
+  env.AUTH_DO = new MemoryAuthDurableObjectNamespace(env);
+  env.GROUP_REGISTRY_DO = new MemoryGroupRegistryDurableObjectNamespace();
 
   return env;
 };
 
 const runDiscordInteractionFlowTest = async (): Promise<void> => {
   const env = createTestEnv();
+  await createGroup(env, "group-1", ["A", "B", "C"]);
   const keyPair = await crypto.subtle.generateKey(
     {
       name: "Ed25519",
@@ -401,16 +476,172 @@ const runDiscordInteractionFlowTest = async (): Promise<void> => {
   }
 };
 
+const runPublicOAuthFlowTest = async (): Promise<void> => {
+  const env = createTestEnv();
+  const originalFetch = globalThis.fetch;
+  const discordUserId = "oauth-user";
+
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.includes("/oauth2/token")) {
+      return Response.json({ access_token: "oauth-access-token" });
+    }
+
+    if (url.includes("/users/@me")) {
+      return Response.json({ id: discordUserId });
+    }
+
+    return new Response(null, { status: 404 });
+  };
+
+  try {
+    const start = await callWorker(env, "POST", "/auth/discord/start");
+    const startBody = await start.json();
+    const authRequestId = startBody.data.authRequestId as string;
+
+    assert(start.status === 200, "oauth start must succeed");
+    assert(startBody.data.authUrl.includes("state="), "oauth start must include state");
+
+    const pending = await callWorker(env, "GET", `/auth/discord/pending/${authRequestId}`);
+    const pendingBody = await pending.json();
+
+    assert(
+      pending.status === 200 && pendingBody.data.status === "PENDING",
+      "oauth pending must be pending before callback",
+    );
+
+    const callbackUrl = new URL(startBody.data.authUrl);
+    const state = callbackUrl.searchParams.get("state");
+
+    if (!state) {
+      throw new Error("OAuth state was missing.");
+    }
+
+    const callback = await callWorker(
+      env,
+      "GET",
+      `/auth/discord/callback?code=oauth-code&state=${encodeURIComponent(state)}`,
+    );
+
+    assert(callback.status === 200, "oauth callback must succeed");
+
+    const completed = await callWorker(env, "GET", `/auth/discord/pending/${authRequestId}`);
+    const completedBody = await completed.json();
+
+    assert(
+      completed.status === 200 &&
+        completedBody.data.status === "COMPLETED" &&
+        completedBody.data.mapping.discordUserId === discordUserId,
+      "oauth pending must complete with mapping",
+    );
+
+    const sessionToken = completedBody.data.mapping.sessionToken as string;
+    const session = await callWorker(env, "GET", "/auth/session", {
+      headers: {
+        authorization: `Bearer ${sessionToken}`,
+      },
+    });
+    const sessionBody = await session.json();
+
+    assert(
+      session.status === 200 && sessionBody.data.discordUserId === discordUserId,
+      "session verification must return mapped discord user",
+    );
+
+    const logout = await callWorker(env, "POST", "/auth/logout", {
+      headers: {
+        authorization: `Bearer ${sessionToken}`,
+      },
+    });
+
+    assert(logout.status === 200, "logout must succeed");
+
+    const afterLogout = await callWorker(env, "GET", "/auth/session", {
+      headers: {
+        authorization: `Bearer ${sessionToken}`,
+      },
+    });
+
+    assert(afterLogout.status === 401, "revoked session must fail verification");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+};
+
+const createGroup = async (
+  env: WorkerEnv,
+  groupId: string,
+  memberIds: [string, string, string],
+): Promise<void> => {
+  const response = await callWorker(env, "POST", "/admin/groups", {
+    headers: {
+      authorization: `Bearer ${env.ADMIN_API_TOKEN}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      groupId,
+      memberIds,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to create test group.");
+  }
+};
+
 const authorizedHeaders = (
   clientType: "extension" | "discord",
   groupId?: string,
+  token?: string,
 ): Record<string, string> => {
   return {
-    authorization: `Bearer ${clientType}-token`,
+    authorization: `Bearer ${token ?? `${clientType}-token`}`,
     "content-type": "application/json",
     "x-client-type": clientType,
     ...(groupId ? { "x-group-id": groupId } : {}),
   };
+};
+
+const createExtensionSession = async (
+  env: WorkerEnv,
+  discordUserId: string,
+): Promise<string> => {
+  const objectId = env.AUTH_DO.idFromName("auth");
+  const stub = env.AUTH_DO.get(objectId);
+  const startResponse = await stub.fetch("https://auth-do/internal/auth/discord/start", {
+    method: "POST",
+  });
+  const startBody = (await startResponse.json()) as {
+    success: true;
+    data: {
+      authUrl: string;
+    };
+  };
+  const state = new URL(startBody.data.authUrl).searchParams.get("state");
+
+  if (!state) {
+    throw new Error("OAuth state token was not generated.");
+  }
+
+  const completeResponse = await stub.fetch("https://auth-do/internal/auth/discord/callback", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      state,
+      discordUserId,
+    }),
+  });
+  const completeBody = (await completeResponse.json()) as {
+    success: true;
+    data: {
+      sessionToken: string;
+    };
+  };
+
+  return completeBody.data.sessionToken;
 };
 
 const callWorker = (

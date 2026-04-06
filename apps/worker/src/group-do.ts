@@ -16,7 +16,6 @@ import {
   type StoredRequestRecord,
 } from "./group-do-model.js";
 import type { DurableObjectState, WorkerEnv } from "./cloudflare.js";
-import { getConfiguredGroupById } from "./groups.js";
 import { jsonError, jsonSuccess } from "./http.js";
 
 const STORAGE_KEY = "group-do-state";
@@ -231,9 +230,13 @@ export class GroupDurableObject {
       return { ok: true, value: storedState };
     }
 
-    const group = getConfiguredGroupById(groupId, this.env.GROUPS_JSON);
+    const objectId = this.env.GROUP_REGISTRY_DO.idFromName('groups')
+    const stub = this.env.GROUP_REGISTRY_DO.get(objectId)
+    const response = await stub.fetch(`https://group-registry/internal/groups/${groupId}`, {
+      method: 'GET',
+    })
 
-    if (!group) {
+    if (!response.ok) {
       return {
         ok: false,
         response: jsonError("GROUP_NOT_FOUND", "Group was not found.", {
@@ -241,6 +244,14 @@ export class GroupDurableObject {
         }),
       };
     }
+
+    const payload = (await response.json()) as {
+      success: true
+      data: {
+        group: GroupDOState['group']
+      }
+    }
+    const group = payload.data.group
 
     const initialState = createInitialGroupDOState(group);
     await this.persistState(initialState);

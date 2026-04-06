@@ -78,6 +78,37 @@ const contract: ApiContract = {
       },
     },
   },
+  "/users/:userId/group": {
+    GET: {
+      params: { userId: "A" },
+      response: {
+        success: true,
+        data: {
+          group: {
+            id: "group-1",
+            members: [{ userId: "A" }, { userId: "B" }, { userId: "C" }],
+          },
+        },
+      },
+    },
+  },
+  "/admin/groups": {
+    POST: {
+      body: {
+        groupId: "group-1",
+        memberIds: ["A", "B", "C"],
+      },
+      response: {
+        success: true,
+        data: {
+          group: {
+            id: "group-1",
+            members: [{ userId: "A" }, { userId: "B" }, { userId: "C" }],
+          },
+        },
+      },
+    },
+  },
   "/requests": {
     POST: {
       body: createRequestBody,
@@ -107,6 +138,57 @@ const contract: ApiContract = {
     GET: {
       params: { groupId: "group-1" },
       response: groupResponse,
+    },
+  },
+  "/auth/discord/start": {
+    POST: {
+      response: {
+        success: true,
+        data: {
+          extensionUserId: "ext-1",
+          authRequestId: "auth-1",
+          authUrl: "https://discord.com/oauth2/authorize?state=state-1",
+        },
+      },
+    },
+  },
+  "/auth/discord/pending/:authRequestId": {
+    GET: {
+      params: { authRequestId: "auth-1" },
+      response: {
+        success: true,
+        data: {
+          status: "COMPLETED",
+          mapping: {
+            extensionUserId: "ext-1",
+            discordUserId: "discord-1",
+            sessionToken: "session-1",
+            expiresAt: 1,
+          },
+        },
+      },
+    },
+  },
+  "/auth/session": {
+    GET: {
+      response: {
+        success: true,
+        data: {
+          extensionUserId: "ext-1",
+          discordUserId: "discord-1",
+          expiresAt: 1,
+        },
+      },
+    },
+  },
+  "/auth/logout": {
+    POST: {
+      response: {
+        success: true,
+        data: {
+          revoked: true,
+        },
+      },
     },
   },
 };

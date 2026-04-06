@@ -1,0 +1,9 @@
+{
+  "name": "@youtube-shorts-chain-blocker/domain",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

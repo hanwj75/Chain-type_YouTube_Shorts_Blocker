@@ -2,6 +2,10 @@ export const SHORTS_REDIRECT_PATH = "/feed/subscriptions";
 
 export const SHORTS_HIDE_SELECTORS = [
   'a[href^="/shorts/"]',
+  'a[title="Shorts"]',
+  'a[aria-label="Shorts"]',
+  'ytd-guide-entry-renderer:has(yt-formatted-string[title="Shorts"])',
+  'ytd-mini-guide-entry-renderer:has(yt-formatted-string[title="Shorts"])',
   'ytd-reel-shelf-renderer',
   'ytd-rich-shelf-renderer:has(ytd-reel-shelf-renderer)',
   'ytd-rich-section-renderer:has(ytd-reel-shelf-renderer)',
@@ -10,8 +14,29 @@ export const SHORTS_HIDE_SELECTORS = [
   'ytm-shorts-lockup-view-model',
 ] as const;
 
-export const isShortsPath = (pathname: string): boolean => {
-  return pathname.startsWith("/shorts/");
+export const isShortsPath = (
+  pathname: string,
+  search = "",
+  href = "",
+): boolean => {
+  if (pathname.startsWith("/shorts/")) {
+    return true;
+  }
+
+  if (pathname === "/watch") {
+    const params = new URLSearchParams(search);
+    const shortsContextParamKeys = ["shorts", "shortsui"];
+
+    if (shortsContextParamKeys.some((key) => params.has(key))) {
+      return true;
+    }
+
+    if (href.toLowerCase().includes("shorts")) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 export const buildShortsHideCss = (): string => {
@@ -35,9 +60,13 @@ export type ShortsBlockDecision = {
 export const decideShortsBlocking = ({
   state,
   pathname,
+  search = "",
+  href = "",
 }: {
   state: "LOCKED" | "UNLOCKED" | null;
   pathname: string;
+  search?: string;
+  href?: string;
 }): ShortsBlockDecision => {
   const blocked = shouldBlockShorts(state);
 
@@ -49,7 +78,7 @@ export const decideShortsBlocking = ({
     };
   }
 
-  if (isShortsPath(pathname)) {
+  if (isShortsPath(pathname, search, href)) {
     return {
       shouldHideUi: true,
       shouldRedirect: true,

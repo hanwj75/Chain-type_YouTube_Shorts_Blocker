@@ -16,7 +16,11 @@ const assert = (condition: unknown, message: string): void => {
 
 const run = (): void => {
   assert(isShortsPath("/shorts/abc"), "shorts path should be detected");
-  assert(!isShortsPath("/watch?v=abc"), "watch path should not be treated as shorts");
+  assert(!isShortsPath("/watch", "?v=abc"), "plain watch url should not be treated as shorts");
+  assert(
+    isShortsPath("/watch", "?v=qThKsJhrFM0&shorts=1"),
+    "watch url with explicit shorts context should be treated as shorts",
+  );
   assert(shouldBlockShorts("LOCKED"), "locked state must block shorts");
   assert(!shouldBlockShorts("UNLOCKED"), "unlocked state must not block shorts");
   assert(
@@ -48,6 +52,18 @@ const run = (): void => {
     !unlockedShortsDecision.shouldRedirect &&
       !unlockedShortsDecision.shouldHideUi,
     "unlocked state must allow /shorts/ access",
+  );
+
+  const lockedSharedShortsDecision = decideShortsBlocking({
+    state: "LOCKED",
+    pathname: "/watch",
+    search: "?v=qThKsJhrFM0&shorts=1",
+    href: "https://www.youtube.com/watch?v=qThKsJhrFM0&shorts=1",
+  });
+
+  assert(
+    lockedSharedShortsDecision.shouldRedirect,
+    "locked state must block shorts-context watch urls",
   );
 
   assert(

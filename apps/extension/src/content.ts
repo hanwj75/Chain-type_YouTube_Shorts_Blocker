@@ -8,6 +8,7 @@ import {
 import type { ExtensionMessageResponse, ExtensionTabMessage } from "./messages.js";
 
 const STYLE_ELEMENT_ID = "shorts-blocker-style";
+const HIDE_SHORTS_ATTRIBUTE = "hide-shorts";
 
 let currentState: CachedBlockState | null = null;
 let lastKnownUrl = location.href;
@@ -48,16 +49,25 @@ function applyBlocking(): void {
   const decision = decideShortsBlocking({
     state: currentState?.state ?? null,
     pathname: location.pathname,
+    search: location.search,
+    href: location.href,
   });
+  const blocked = shouldBlockShorts(currentState?.state ?? null);
+  const shouldRedirectSharedShorts =
+    blocked &&
+    location.pathname === "/watch" &&
+    isWatchPageShowingShortsContext();
 
-  if (!shouldBlockShorts(currentState?.state ?? null)) {
+  syncHideShortsAttribute(blocked);
+
+  if (!blocked) {
     removeBlockStyle();
     return;
   }
 
   ensureBlockStyle();
 
-  if (decision.shouldRedirect && decision.redirectTarget) {
+  if ((decision.shouldRedirect || shouldRedirectSharedShorts) && decision.redirectTarget) {
     if (location.pathname !== decision.redirectTarget) {
       location.replace(decision.redirectTarget);
       return;
@@ -96,6 +106,22 @@ function hideShortsUi(): void {
 
     if (container instanceof HTMLElement) {
       container.style.display = "none";
+    }
+  });
+
+  const possibleSidebarItems = document.querySelectorAll(
+    "ytd-guide-entry-renderer, ytd-mini-guide-entry-renderer",
+  );
+
+  possibleSidebarItems.forEach((item) => {
+    if (!(item instanceof HTMLElement)) {
+      return;
+    }
+
+    const text = item.textContent?.trim().toLowerCase() ?? "";
+
+    if (text.includes("shorts")) {
+      item.style.display = "none";
     }
   });
 }
@@ -150,4 +176,34 @@ function scheduleApply(): void {
     applyScheduled = false;
     applyBlocking();
   });
+}
+function syncHideShortsAttribute(blocked: boolean): void {
+  document.documentElement.setAttribute(
+    HIDE_SHORTS_ATTRIBUTE,
+    blocked ? "true" : "false",
+  );
+}
+
+function isWatchPageShowingShortsContext(): boolean {
+  const videoId = new URLSearchParams(location.search).get("v");
+  const pageHtml = document.documentElement.innerHTML;
+
+  if (videoId) {
+    if (
+      pageHtml.includes(`"reelWatchEndpoint":{"videoId":"${videoId}"`) ||
+      pageHtml.includes(`"/shorts/${videoId}"`) ||
+      pageHtml.includes(`"url":"/shorts/${videoId}"`)
+    ) {
+      return true;
+    }
+  }
+
+  return Boolean(
+    document.querySelector('link[rel="canonical"][href*="/shorts/"]') ||
+      document.querySelector('meta[property="og:url"][content*="/shorts/"]') ||
+      document.querySelector('meta[property="al:web:url"][content*="/shorts/"]') ||
+      document.querySelector("ytd-reel-player-overlay-renderer") ||
+      document.querySelector("ytd-shorts") ||
+      document.querySelector("ytd-reel-video-renderer"),
+  );
 }

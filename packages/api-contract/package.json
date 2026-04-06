@@ -2,6 +2,9 @@
   "name": "@youtube-shorts-chain-blocker/api-contract",
   "version": "0.0.0",
   "private": true,
+  "dependencies": {
+    "@youtube-shorts-chain-blocker/domain": "*"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"

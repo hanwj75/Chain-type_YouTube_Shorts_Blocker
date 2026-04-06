@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "youtube-shorts-chain-blocker",
+  "version": "0.0.0",
+  "description": "Worker state-driven YouTube Shorts blocker.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "alarms",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "dist/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Shorts Blocker",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "128": "assets/icon.svg"
+  }
+}

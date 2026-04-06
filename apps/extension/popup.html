@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shorts Blocker</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup__header">
+        <img class="popup__icon" src="./assets/icon.svg" alt="" />
+        <div>
+          <h1>Shorts Blocker</h1>
+          <p id="status-text">Loading state...</p>
+          <p id="identity-text">Not signed in.</p>
+        </div>
+      </header>
+
+      <form id="settings-form" class="popup__form">
+        <label>
+          Worker API Base URL
+          <input id="api-base-url" name="apiBaseUrl" type="url" required />
+        </label>
+
+        <label>
+          Group ID
+          <input id="group-id" name="groupId" type="text" required />
+        </label>
+
+        <div class="popup__actions">
+          <button type="submit">Save</button>
+          <button id="sync-button" type="button">Sync Now</button>
+        </div>
+      </form>
+
+      <div class="popup__actions">
+        <button id="login-button" type="button">Discord Login</button>
+        <button id="poll-button" type="button">Check Login</button>
+      </div>
+
+      <div class="popup__actions">
+        <button id="logout-button" type="button">Logout</button>
+      </div>
+    </main>
+
+    <script type="module" src="./dist/popup.js"></script>
+  </body>
+</html>

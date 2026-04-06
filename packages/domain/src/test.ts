@@ -100,8 +100,37 @@ const run = (): void => {
   );
 
   assert(
+    !canCreateRequest({
+      group,
+      requesterId: "A",
+      targetUserId: "A",
+      requestType: "LOCK_REQUEST",
+      currentState: "LOCKED",
+      activeRequests: [],
+    }).ok,
+    "lock request from locked state should be rejected",
+  );
+
+  assert(
     hasOpenRequestForTarget([openRequest], "A"),
     "open request lookup should detect active target request",
+  );
+
+  assert(
+    !canCreateRequest({
+      group,
+      requesterId: "B",
+      targetUserId: "A",
+      requestType: "UNLOCK_REQUEST",
+      currentState: "LOCKED",
+      activeRequests: [
+        {
+          ...openRequest,
+          currentState: "LOCKED",
+        },
+      ],
+    }).ok,
+    "a target must not have more than one active request",
   );
 
   assert(
@@ -120,6 +149,18 @@ const run = (): void => {
       voterId: "B",
     }).ok,
     "non-target group member should vote",
+  );
+
+  assert(
+    !canVoteOnRequest({
+      group,
+      request: {
+        ...openRequest,
+        votes: [{ voterId: "B", choice: "APPROVE" }],
+      },
+      voterId: "B",
+    }).ok,
+    "same voter must not vote twice on one request",
   );
 
   assert(
@@ -155,6 +196,21 @@ const run = (): void => {
   assert(
     approvedOutcome.nextState === "LOCKED",
     "approved lock request should lock target",
+  );
+
+  const rejectedOutcome = resolveVoteOutcome({
+    currentState: "LOCKED",
+    requestType: "UNLOCK_REQUEST",
+    votes: [
+      { voterId: "B", choice: "REJECT" },
+      { voterId: "C", choice: "REJECT" },
+    ],
+  });
+
+  assert(rejectedOutcome.status === "RESOLVED", "two reject votes should resolve");
+  assert(
+    rejectedOutcome.nextState === "LOCKED",
+    "rejected unlock request must keep the current LOCKED state",
   );
 
   console.log("domain tests passed");

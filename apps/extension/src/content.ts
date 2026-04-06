@@ -1,5 +1,10 @@
 import type { CachedBlockState } from "./config.js";
-import { buildShortsHideCss, getRedirectTarget, isShortsPath, shouldBlockShorts } from "./index.js";
+import {
+  buildShortsHideCss,
+  decideShortsBlocking,
+  shouldBlockShorts,
+  shouldReapplyBlockingForNavigation,
+} from "./index.js";
 import type { ExtensionMessageResponse, ExtensionTabMessage } from "./messages.js";
 
 const STYLE_ELEMENT_ID = "shorts-blocker-style";
@@ -40,6 +45,11 @@ async function refreshState(): Promise<void> {
 }
 
 function applyBlocking(): void {
+  const decision = decideShortsBlocking({
+    state: currentState?.state ?? null,
+    pathname: location.pathname,
+  });
+
   if (!shouldBlockShorts(currentState?.state ?? null)) {
     removeBlockStyle();
     return;
@@ -47,16 +57,16 @@ function applyBlocking(): void {
 
   ensureBlockStyle();
 
-  if (isShortsPath(location.pathname)) {
-    const redirectTarget = getRedirectTarget();
-
-    if (location.pathname !== redirectTarget) {
-      location.replace(redirectTarget);
+  if (decision.shouldRedirect && decision.redirectTarget) {
+    if (location.pathname !== decision.redirectTarget) {
+      location.replace(decision.redirectTarget);
       return;
     }
   }
 
-  hideShortsUi();
+  if (decision.shouldHideUi) {
+    hideShortsUi();
+  }
 }
 
 function ensureBlockStyle(): void {
@@ -119,7 +129,12 @@ function installMutationObserver(): void {
 }
 
 function onUrlChanged(): void {
-  if (lastKnownUrl !== location.href) {
+  if (
+    shouldReapplyBlockingForNavigation({
+      previousUrl: lastKnownUrl,
+      nextUrl: location.href,
+    })
+  ) {
     lastKnownUrl = location.href;
     scheduleApply();
   }

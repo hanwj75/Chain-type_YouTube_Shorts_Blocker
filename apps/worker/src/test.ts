@@ -255,6 +255,29 @@ const run = async (): Promise<void> => {
     "approved lock request must lock user",
   );
 
+  const resolvedVoteAttempt = await callWorker(
+    env,
+    "POST",
+    `/requests/${requestId}/votes`,
+    {
+      headers: authorizedHeaders("discord", "group-1"),
+      body: JSON.stringify({
+        voterId: "B",
+        choice: "APPROVE",
+      }),
+    },
+  );
+  const resolvedVoteAttemptBody = await resolvedVoteAttempt.json();
+
+  assert(
+    resolvedVoteAttempt.status === 400,
+    "resolved request must reject additional votes",
+  );
+  assert(
+    resolvedVoteAttemptBody.errorCode === "REQUEST_ALREADY_RESOLVED",
+    "resolved request vote error code mismatch",
+  );
+
   const lockedState = await callWorker(env, "GET", "/users/A/state", {
     headers: authorizedHeaders("extension", "group-1", extensionSession),
   });

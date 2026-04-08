@@ -6,6 +6,7 @@ import type {
 } from "@youtube-shorts-chain-blocker/api-contract";
 import type { UserState } from "@youtube-shorts-chain-blocker/domain";
 import {
+  DEFAULT_WORKER_API_BASE_URL,
   EXTENSION_SYNC_ALARM,
   STORAGE_KEYS,
   type CachedBlockState,
@@ -20,11 +21,13 @@ import type {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create(EXTENSION_SYNC_ALARM, { periodInMinutes: 1 });
+  void ensureDefaultConfig();
   void syncAndBroadcastState();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create(EXTENSION_SYNC_ALARM, { periodInMinutes: 1 });
+  void ensureDefaultConfig();
   void syncAndBroadcastState();
 });
 
@@ -59,8 +62,12 @@ const handleMessage = async (
   }
 
   if (message.type === "SET_EXTENSION_CONFIG") {
+    const currentConfig = await getExtensionConfig();
     await chrome.storage.local.set({
-      [STORAGE_KEYS.config]: message.payload,
+      [STORAGE_KEYS.config]: {
+        ...message.payload,
+        apiBaseUrl: currentConfig?.apiBaseUrl ?? DEFAULT_WORKER_API_BASE_URL,
+      } satisfies ExtensionConfig,
     });
 
     return { ok: true, data: await syncAndBroadcastState() };
@@ -312,6 +319,24 @@ const logoutSession = async (): Promise<boolean> => {
 const getExtensionConfig = async (): Promise<ExtensionConfig | null> => {
   const values = await chrome.storage.local.get(STORAGE_KEYS.config);
   return (values[STORAGE_KEYS.config] as ExtensionConfig | undefined) ?? null;
+};
+
+const ensureDefaultConfig = async (): Promise<ExtensionConfig> => {
+  const existing = await getExtensionConfig();
+  const nextConfig: ExtensionConfig = {
+    apiBaseUrl: existing?.apiBaseUrl?.trim() || DEFAULT_WORKER_API_BASE_URL,
+    groupId: existing?.groupId?.trim() ?? "",
+    extensionUserId: existing?.extensionUserId ?? null,
+    discordUserId: existing?.discordUserId ?? null,
+    sessionToken: existing?.sessionToken ?? null,
+    authRequestId: existing?.authRequestId ?? null,
+  };
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.config]: nextConfig,
+  });
+
+  return nextConfig;
 };
 
 const getLastKnownState = async (): Promise<CachedBlockState | null> => {

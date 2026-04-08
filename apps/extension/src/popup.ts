@@ -1,4 +1,8 @@
-import type { CachedBlockState, ExtensionConfig } from "./config.js";
+import {
+  DEFAULT_WORKER_API_BASE_URL,
+  type CachedBlockState,
+  type ExtensionConfig,
+} from "./config.js";
 import { isConfigured } from "./config.js";
 import type { ExtensionMessageResponse } from "./messages.js";
 
@@ -10,8 +14,8 @@ const logoutButton = document.getElementById("logout-button") as HTMLButtonEleme
 const statusText = document.getElementById("status-text") as HTMLParagraphElement;
 const identityText = document.getElementById("identity-text") as HTMLParagraphElement;
 
-const apiBaseUrlInput = document.getElementById("api-base-url") as HTMLInputElement;
 const groupIdInput = document.getElementById("group-id") as HTMLInputElement;
+const workerUrlText = document.getElementById("worker-url-text") as HTMLParagraphElement;
 
 void initializePopup();
 
@@ -25,7 +29,7 @@ async function initializePopup(): Promise<void> {
 
     const existing = await getStoredConfig();
     const config: ExtensionConfig = {
-      apiBaseUrl: apiBaseUrlInput.value.trim(),
+      apiBaseUrl: existing?.apiBaseUrl?.trim() || DEFAULT_WORKER_API_BASE_URL,
       groupId: groupIdInput.value.trim(),
       extensionUserId: existing?.extensionUserId ?? null,
       discordUserId: existing?.discordUserId ?? null,
@@ -104,10 +108,11 @@ async function loadConfig(): Promise<void> {
   const config = await getStoredConfig();
 
   if (!config) {
+    workerUrlText.textContent = DEFAULT_WORKER_API_BASE_URL;
     return;
   }
 
-  apiBaseUrlInput.value = config.apiBaseUrl;
+  workerUrlText.textContent = config.apiBaseUrl || DEFAULT_WORKER_API_BASE_URL;
   groupIdInput.value = config.groupId;
 }
 

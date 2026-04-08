@@ -1,0 +1,52 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "youtube-shorts-chain-blocker-worker",
+  "main": "apps/worker/src/index.ts",
+  "compatibility_date": "2025-04-01",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": true,
+  "vars": {
+    "ALLOWED_ORIGINS": "chrome-extension://__YOUR_EXTENSION_ID__",
+    "DISCORD_API_BASE_URL": "https://discord.com/api"
+  },
+  "secrets": {
+    "required": [
+      "ADMIN_API_TOKEN",
+      "EXTENSION_API_TOKEN",
+      "DISCORD_API_TOKEN",
+      "DISCORD_PUBLIC_KEY",
+      "DISCORD_CLIENT_ID",
+      "DISCORD_CLIENT_SECRET",
+      "DISCORD_OAUTH_REDIRECT_URI"
+    ]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "GROUP_DO",
+        "class_name": "GroupDurableObject"
+      },
+      {
+        "name": "AUTH_DO",
+        "class_name": "AuthDurableObject"
+      },
+      {
+        "name": "GROUP_REGISTRY_DO",
+        "class_name": "GroupRegistryDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "GroupDurableObject",
+        "AuthDurableObject",
+        "GroupRegistryDurableObject"
+      ]
+    }
+  ]
+}

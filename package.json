@@ -7,10 +7,12 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "deploy:worker": "wrangler deploy --config wrangler.jsonc",
     "test": "npm run build --workspaces --if-present && npm run test:run --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "^4.81.0"
   }
 }

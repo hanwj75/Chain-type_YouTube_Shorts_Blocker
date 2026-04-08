@@ -1,6 +1,6 @@
 export const EXTENSION_SYNC_ALARM = "shorts-blocker-sync";
 export const DEFAULT_WORKER_API_BASE_URL =
-  "https://chain-short-man.<your-subdomain>.workers.dev";
+  "https://chain-short-man.wjws9608.workers.dev";
 export const STORAGE_KEYS = {
   config: "shortsBlockerConfig",
   cachedState: "shortsBlockerCachedState",

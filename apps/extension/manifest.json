@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "youtube-shorts-chain-blocker",
+  "name": "chain-short-man",
   "version": "0.0.0",
-  "description": "Worker state-driven YouTube Shorts blocker.",
+  "description": "Worker state-driven Chain Short Man.",
   "permissions": ["storage", "tabs", "scripting", "alarms", "activeTab"],
   "host_permissions": ["https://www.youtube.com/*"],
   "background": {

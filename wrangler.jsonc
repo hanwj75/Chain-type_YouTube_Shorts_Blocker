@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "youtube-shorts-chain-blocker-worker",
+  "name": "chain-short-man",
   "main": "apps/worker/src/index.ts",
   "compatibility_date": "2025-04-01",
   "workers_dev": true,

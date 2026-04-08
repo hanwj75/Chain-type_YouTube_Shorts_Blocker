@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -12,33 +12,19 @@
         <img class="popup__icon" src="./assets/icon-128.png" alt="" />
         <div>
           <h1>Shorts Blocker</h1>
-          <p id="status-text">Loading state...</p>
-          <p id="identity-text">Not signed in.</p>
+          <p id="status-text">상태를 불러오는 중...</p>
+          <p id="identity-text">로그인되지 않음.</p>
         </div>
       </header>
 
-      <form id="settings-form" class="popup__form">
+      <section class="popup__details">
+        <p>Worker API</p>
         <p id="worker-url-text"></p>
-
-        <label>
-          Group ID
-          <input id="group-id" name="groupId" type="text" placeholder="Discord 로그인 후 자동 입력" required />
-        </label>
-
-        <div class="popup__actions">
-          <button type="submit">Save</button>
-          <button id="sync-button" type="button">Sync Now</button>
-        </div>
-      </form>
-
-      <div class="popup__actions">
-        <button id="login-button" type="button">Discord Login</button>
-        <button id="poll-button" type="button">Check Login</button>
-      </div>
-
-      <div class="popup__actions">
-        <button id="logout-button" type="button">Logout</button>
-      </div>
+        <p>Group ID</p>
+        <p id="group-id-text"></p>
+        <p>동작 방식</p>
+        <p>열려 있는 동안 자동 로그인, 자동 동기화, 자동 차단 상태 반영을 수행합니다.</p>
+      </section>
     </main>
 
     <script type="module" src="./dist/apps/extension/src/popup.js"></script>

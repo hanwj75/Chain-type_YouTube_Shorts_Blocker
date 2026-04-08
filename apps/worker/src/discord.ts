@@ -157,7 +157,7 @@ export const handleDiscordInteraction = async ({
     return jsonDiscord({
       type: 4,
       data: {
-        content: "Invalid Discord signature.",
+        content: "디스코드 서명이 유효하지 않습니다.",
         flags: 64,
       },
     }, 401);
@@ -191,7 +191,7 @@ export const handleDiscordInteraction = async ({
   return jsonDiscord({
     type: 4,
     data: {
-      content: "Unsupported Discord interaction.",
+      content: "지원하지 않는 디스코드 상호작용입니다.",
       flags: 64,
     },
   }, 400);
@@ -216,13 +216,13 @@ const handleApplicationCommand = async (
   const requestType = mapCommandToRequestType(interaction.data.name);
 
   if (!requesterId || !targetUserId || !requestType) {
-    return ephemeralDiscordMessage("Invalid Discord command payload.");
+    return ephemeralDiscordMessage("디스코드 명령 형식이 올바르지 않습니다.");
   }
 
   const group = await resolveGroupByUsers([requesterId, targetUserId]);
 
   if (!group) {
-    return ephemeralDiscordMessage("Requester and target must be in the same 3-person group.");
+    return ephemeralDiscordMessage("요청자와 대상자는 같은 3인 그룹에 속해야 합니다.");
   }
 
   const result = await createRequest(group.id, {
@@ -253,7 +253,7 @@ export const registerDiscordGlobalCommands = async (
     return {
       success: false,
       errorCode: "DISCORD_COMMAND_REGISTRATION_FAILED",
-      message: "Discord application credentials are missing.",
+      message: "디스코드 앱 자격 증명이 없습니다.",
     };
   }
 
@@ -275,7 +275,7 @@ export const registerDiscordGlobalCommands = async (
     return {
       success: false,
       errorCode: "DISCORD_COMMAND_REGISTRATION_FAILED",
-      message: `Discord command registration failed with status ${response.status}.`,
+      message: `디스코드 명령 등록에 실패했습니다. 상태 코드: ${response.status}.`,
     };
   }
 
@@ -295,7 +295,7 @@ const handleCreateGroupCommand = async (
   const memberIds = getCommandUserIds(interaction.data.options);
 
   if (!guildId || !memberIds) {
-    return ephemeralDiscordMessage("Invalid group creation payload.");
+    return ephemeralDiscordMessage("그룹 생성 형식이 올바르지 않습니다.");
   }
 
   const result = await createGroup({
@@ -308,7 +308,7 @@ const handleCreateGroupCommand = async (
   }
 
   return ephemeralDiscordMessage(
-    `Group ${result.data.group.id} created for <@${memberIds[0]}>, <@${memberIds[1]}>, <@${memberIds[2]}>.`,
+    `그룹 ${result.data.group.id}가 <@${memberIds[0]}>, <@${memberIds[1]}>, <@${memberIds[2]}> 멤버로 생성되었습니다.`,
   );
 };
 
@@ -336,7 +336,7 @@ const handleComponentInteraction = async ({
   const voterId = getInteractionUserId(interaction);
 
   if (!action || !voterId) {
-    return ephemeralDiscordMessage("Invalid vote action.");
+    return ephemeralDiscordMessage("투표 동작이 올바르지 않습니다.");
   }
 
   const result = await castVote(action.groupId, action.requestId, {
@@ -391,8 +391,8 @@ const buildRequestMessage = (
       votes: request.votes,
     }).nextState;
   const content = resolved
-    ? `Request ${request.type} for <@${request.targetUserId}> resolved. Final state: ${finalState}. Approve ${approveCount}, reject ${rejectCount}.`
-    : `Request ${request.type} for <@${request.targetUserId}> is open. Approve ${approveCount}, reject ${rejectCount}.`;
+    ? `${requestTypeLabel(request.type)} 요청이 <@${request.targetUserId}> 대상에 대해 종료되었습니다. 최종 상태: ${finalState}. 승인 ${approveCount}, 거절 ${rejectCount}.`
+    : `${requestTypeLabel(request.type)} 요청이 <@${request.targetUserId}> 대상에 대해 열려 있습니다. 승인 ${approveCount}, 거절 ${rejectCount}.`;
 
   return {
     content,
@@ -403,7 +403,7 @@ const buildRequestMessage = (
           {
             type: 2,
             style: 3,
-            label: "Approve",
+            label: "승인",
             custom_id: serializeVoteButtonCustomId({
               kind: "vote",
               groupId: request.groupId,
@@ -415,7 +415,7 @@ const buildRequestMessage = (
           {
             type: 2,
             style: 4,
-            label: "Reject",
+            label: "거절",
             custom_id: serializeVoteButtonCustomId({
               kind: "vote",
               groupId: request.groupId,
@@ -494,26 +494,26 @@ const isCreateGroupCommand = (commandName: string): boolean => {
 };
 
 const buildDiscordGlobalCommands = (): DiscordApplicationCommandDefinition[] => {
-  return [
+    return [
     {
       name: "group-create",
-      description: "Create a 3-person group.",
+      description: "3인 그룹을 생성합니다.",
       options: [
         {
           name: "user1",
-          description: "First group member.",
+          description: "첫 번째 그룹 멤버입니다.",
           type: 6,
           required: true,
         },
         {
           name: "user2",
-          description: "Second group member.",
+          description: "두 번째 그룹 멤버입니다.",
           type: 6,
           required: true,
         },
         {
           name: "user3",
-          description: "Third group member.",
+          description: "세 번째 그룹 멤버입니다.",
           type: 6,
           required: true,
         },
@@ -521,11 +521,11 @@ const buildDiscordGlobalCommands = (): DiscordApplicationCommandDefinition[] => 
     },
     {
       name: "lock",
-      description: "Create a lock request for a target user.",
+      description: "대상 사용자에 대한 잠금 요청을 생성합니다.",
       options: [
         {
           name: "user",
-          description: "Target user.",
+          description: "대상 사용자입니다.",
           type: 6,
           required: true,
         },
@@ -533,11 +533,11 @@ const buildDiscordGlobalCommands = (): DiscordApplicationCommandDefinition[] => 
     },
     {
       name: "unlock",
-      description: "Create an unlock request for a target user.",
+      description: "대상 사용자에 대한 잠금 해제 요청을 생성합니다.",
       options: [
         {
           name: "user",
-          description: "Target user.",
+          description: "대상 사용자입니다.",
           type: 6,
           required: true,
         },
@@ -560,35 +560,39 @@ const mapCommandToRequestType = (commandName: string): RequestType | null => {
 
 const formatErrorMessage = (errorCode: ErrorCode): string => {
   const messages: Record<ErrorCode, string> = {
-    AUTH_REQUIRED: "Authentication is required.",
-    INVALID_AUTH: "Authentication failed.",
-    AUTH_PENDING: "Authentication is still pending.",
-    SESSION_NOT_FOUND: "Session was not found.",
-    INVALID_REQUEST: "Invalid request payload.",
-    INTERNAL_ERROR: "Internal error.",
-    METHOD_NOT_ALLOWED: "Method not allowed.",
-    GROUP_CONTEXT_REQUIRED: "Group context is required.",
-    INVALID_GROUP_MEMBERS: "Invalid group member configuration.",
-    USER_ALREADY_IN_GROUP: "A user already belongs to another group.",
-    ALREADY_LOCKED: "The target user is already locked.",
-    ALREADY_UNLOCKED: "The target user is already unlocked.",
-    ACTIVE_REQUEST_EXISTS: "An active request already exists for the target user.",
-    TARGET_CANNOT_VOTE: "The target user cannot vote on this request.",
-    REQUEST_NOT_FOUND: "The request was not found.",
-    GROUP_NOT_FOUND: "The group was not found.",
-    USER_NOT_FOUND: "The user was not found.",
-    REQUEST_ALREADY_RESOLVED: "This request is already resolved.",
-    DUPLICATE_VOTE: "You have already voted on this request.",
-    VOTER_NOT_IN_GROUP: "Only group members can vote.",
-    REQUESTER_NOT_IN_GROUP: "Requester is not in the group.",
-    TARGET_NOT_IN_GROUP: "Target user is not in the group.",
-    REQUEST_GROUP_MISMATCH: "Request group mismatch.",
-    INVALID_REQUEST_TYPE_FOR_STATE: "This request direction is not allowed for the current state.",
-    GROUP_ALREADY_EXISTS: "A group already exists for this server.",
-    DISCORD_COMMAND_REGISTRATION_FAILED: "Discord command registration failed.",
+    AUTH_REQUIRED: "인증이 필요합니다.",
+    INVALID_AUTH: "인증에 실패했습니다.",
+    AUTH_PENDING: "인증이 아직 진행 중입니다.",
+    SESSION_NOT_FOUND: "세션을 찾을 수 없습니다.",
+    INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
+    INTERNAL_ERROR: "내부 오류가 발생했습니다.",
+    METHOD_NOT_ALLOWED: "허용되지 않은 메서드입니다.",
+    GROUP_CONTEXT_REQUIRED: "그룹 정보가 필요합니다.",
+    INVALID_GROUP_MEMBERS: "그룹 멤버 구성이 올바르지 않습니다.",
+    USER_ALREADY_IN_GROUP: "이미 다른 그룹에 속한 사용자입니다.",
+    ALREADY_LOCKED: "대상 사용자는 이미 잠금 상태입니다.",
+    ALREADY_UNLOCKED: "대상 사용자는 이미 해제 상태입니다.",
+    ACTIVE_REQUEST_EXISTS: "대상 사용자에 대한 활성 요청이 이미 존재합니다.",
+    TARGET_CANNOT_VOTE: "대상 사용자는 이 요청에 투표할 수 없습니다.",
+    REQUEST_NOT_FOUND: "요청을 찾을 수 없습니다.",
+    GROUP_NOT_FOUND: "그룹을 찾을 수 없습니다.",
+    USER_NOT_FOUND: "사용자를 찾을 수 없습니다.",
+    REQUEST_ALREADY_RESOLVED: "이미 종료된 요청입니다.",
+    DUPLICATE_VOTE: "이미 이 요청에 투표했습니다.",
+    VOTER_NOT_IN_GROUP: "그룹 멤버만 투표할 수 있습니다.",
+    REQUESTER_NOT_IN_GROUP: "요청자가 그룹 멤버가 아닙니다.",
+    TARGET_NOT_IN_GROUP: "대상 사용자가 그룹 멤버가 아닙니다.",
+    REQUEST_GROUP_MISMATCH: "요청 그룹이 일치하지 않습니다.",
+    INVALID_REQUEST_TYPE_FOR_STATE: "현재 상태에서는 이 방향의 요청을 사용할 수 없습니다.",
+    GROUP_ALREADY_EXISTS: "이 서버에는 이미 그룹이 존재합니다.",
+    DISCORD_COMMAND_REGISTRATION_FAILED: "디스코드 명령 등록에 실패했습니다.",
   };
 
   return messages[errorCode];
+};
+
+const requestTypeLabel = (requestType: RequestType): string => {
+  return requestType === "LOCK_REQUEST" ? "잠금" : "잠금 해제";
 };
 
 const ephemeralDiscordMessage = (content: string): Response => {

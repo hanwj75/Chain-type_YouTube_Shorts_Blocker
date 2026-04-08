@@ -403,7 +403,7 @@ const runDiscordInteractionFlowTest = async (): Promise<void> => {
 
     assert(
       targetVoteResponse.status === 200 &&
-        targetVoteBody.data.content.includes("target user cannot vote"),
+        targetVoteBody.data.content.includes("투표할 수 없습니다"),
       "target user vote must be rejected",
     );
 
@@ -441,7 +441,7 @@ const runDiscordInteractionFlowTest = async (): Promise<void> => {
 
     assert(
       duplicateVoteResponse.status === 200 &&
-        duplicateVoteBody.data.content.includes("already voted"),
+        duplicateVoteBody.data.content.includes("이미 이 요청에 투표했습니다"),
       "duplicate vote must be rejected",
     );
 
@@ -472,7 +472,10 @@ const runDiscordInteractionFlowTest = async (): Promise<void> => {
     };
 
     assert(finalPatch.url.includes("/messages/@original"), "final message patch must call Discord API");
-    assert(finalPatchBody.content.includes("resolved"), "final message must be resolved");
+    assert(
+      finalPatchBody.content.includes("종료되었습니다"),
+      "final message must be resolved",
+    );
     assert(
       finalPatchBody.components[0].components.every((component) => component.disabled === true),
       "resolved message buttons must be disabled",
@@ -495,7 +498,7 @@ const runDiscordInteractionFlowTest = async (): Promise<void> => {
 
     assert(
       resolvedVoteResponse.status === 200 &&
-        resolvedVoteBody.data.content.includes("already resolved"),
+        resolvedVoteBody.data.content.includes("이미 종료된 요청입니다"),
       "resolved request vote must be rejected",
     );
   } finally {
@@ -656,7 +659,7 @@ const runLocalIntegrationFlowTest = async (): Promise<void> => {
 
     assert(createLockResponse.status === 200, "discord lock request must be created");
     assert(
-      createLockBody.data.content.includes("Request LOCK_REQUEST for <@A> is open."),
+      createLockBody.data.content.includes("잠금 요청이 <@A> 대상에 대해 열려 있습니다."),
       "discord create message must describe the open lock request",
     );
 
@@ -691,7 +694,7 @@ const runLocalIntegrationFlowTest = async (): Promise<void> => {
     };
 
     assert(
-      firstPatch.content?.includes("Approve 1, reject 0."),
+      firstPatch.content?.includes("승인 1, 거절 0."),
       "first lock vote must update the Discord message with live counts",
     );
 
@@ -740,7 +743,7 @@ const runLocalIntegrationFlowTest = async (): Promise<void> => {
     };
 
     assert(
-      resolvedLockPatch.content?.includes("Final state: LOCKED."),
+      resolvedLockPatch.content?.includes("최종 상태: LOCKED."),
       "resolved lock request must publish the final LOCKED result",
     );
     assert(
@@ -782,7 +785,7 @@ const runLocalIntegrationFlowTest = async (): Promise<void> => {
 
     assert(createUnlockResponse.status === 200, "discord unlock request must be created");
     assert(
-      createUnlockBody.data.content.includes("Request UNLOCK_REQUEST for <@A> is open."),
+      createUnlockBody.data.content.includes("잠금 해제 요청이 <@A> 대상에 대해 열려 있습니다."),
       "discord create message must describe the open unlock request",
     );
 
@@ -872,7 +875,7 @@ const runLocalIntegrationFlowTest = async (): Promise<void> => {
 
     assert(
       resolvedUnlockVote.status === 200 &&
-        resolvedUnlockVoteBody.data.content.includes("already resolved"),
+        resolvedUnlockVoteBody.data.content.includes("이미 종료된 요청입니다"),
       "resolved unlock request must reject further Discord button processing",
     );
 
@@ -884,7 +887,7 @@ const runLocalIntegrationFlowTest = async (): Promise<void> => {
     };
 
     assert(
-      resolvedUnlockPatch.content?.includes("Final state: LOCKED."),
+      resolvedUnlockPatch.content?.includes("최종 상태: LOCKED."),
       "tie resolution must publish the unchanged LOCKED final state",
     );
     assert(
@@ -947,7 +950,7 @@ const runDiscordGroupCreationFlowTest = async (): Promise<void> => {
 
   assert(response.status === 200, "discord group-create command must succeed");
   assert(
-    body.data.content.includes("Group group-1 created"),
+    body.data.content.includes("그룹 group-1가"),
     "discord group-create command must confirm the created group",
   );
 

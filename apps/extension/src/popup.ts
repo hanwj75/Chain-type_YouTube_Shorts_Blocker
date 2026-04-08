@@ -3,117 +3,96 @@ import {
   type CachedBlockState,
   type ExtensionConfig,
 } from "./config.js";
-import { isConfigured } from "./config.js";
 import type { ExtensionMessageResponse } from "./messages.js";
 
-const settingsForm = document.getElementById("settings-form") as HTMLFormElement;
-const syncButton = document.getElementById("sync-button") as HTMLButtonElement;
-const loginButton = document.getElementById("login-button") as HTMLButtonElement;
-const pollButton = document.getElementById("poll-button") as HTMLButtonElement;
-const logoutButton = document.getElementById("logout-button") as HTMLButtonElement;
 const statusText = document.getElementById("status-text") as HTMLParagraphElement;
 const identityText = document.getElementById("identity-text") as HTMLParagraphElement;
-
-const groupIdInput = document.getElementById("group-id") as HTMLInputElement;
 const workerUrlText = document.getElementById("worker-url-text") as HTMLParagraphElement;
+const groupIdText = document.getElementById("group-id-text") as HTMLParagraphElement;
+
+let authPollTimer: number | null = null;
 
 void initializePopup();
 
 async function initializePopup(): Promise<void> {
-  await loadConfig();
+  const config = await loadConfig();
   await refreshStatus();
   await refreshIdentity();
 
-  settingsForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
+  workerUrlText.textContent = config?.apiBaseUrl || DEFAULT_WORKER_API_BASE_URL;
+  groupIdText.textContent = config?.groupId?.trim() || "미설정";
 
-    const existing = await getStoredConfig();
-    const config: ExtensionConfig = {
-      apiBaseUrl: existing?.apiBaseUrl?.trim() || DEFAULT_WORKER_API_BASE_URL,
-      groupId: groupIdInput.value.trim(),
-      extensionUserId: existing?.extensionUserId ?? null,
-      discordUserId: existing?.discordUserId ?? null,
-      sessionToken: existing?.sessionToken ?? null,
-      authRequestId: existing?.authRequestId ?? null,
-    };
-
-    if (!isConfigured(config)) {
-      statusText.textContent = "Fill required fields before saving.";
-      return;
-    }
-
-    const response = (await chrome.runtime.sendMessage({
-      type: "SET_EXTENSION_CONFIG",
-      payload: config,
-    })) as ExtensionMessageResponse;
-
-    if (!response.ok) {
-      statusText.textContent = response.message;
-      return;
-    }
-
-    updateStatusText(response.data as CachedBlockState | null);
-    await refreshIdentity();
-  });
-
-  syncButton.addEventListener("click", async () => {
-    const response = (await chrome.runtime.sendMessage({
-      type: "SYNC_BLOCK_STATE",
-    })) as ExtensionMessageResponse;
-
-    if (!response.ok) {
-      statusText.textContent = response.message;
-      return;
-    }
-
-    updateStatusText(response.data as CachedBlockState | null);
-  });
-
-  loginButton.addEventListener("click", async () => {
-    const response = (await chrome.runtime.sendMessage({
-      type: "START_DISCORD_OAUTH",
-    })) as ExtensionMessageResponse;
-
-    statusText.textContent = response.ok
-      ? "Discord login started. Complete the browser flow, then press Check Login."
-      : response.message;
-  });
-
-  pollButton.addEventListener("click", async () => {
-    const response = (await chrome.runtime.sendMessage({
-      type: "POLL_DISCORD_OAUTH",
-    })) as ExtensionMessageResponse;
-
-    if (!response.ok) {
-      statusText.textContent = response.message;
-      return;
-    }
-
-    statusText.textContent = "Discord account linked.";
-    await refreshIdentity();
-    await refreshStatus();
-  });
-
-  logoutButton.addEventListener("click", async () => {
-    const response = (await chrome.runtime.sendMessage({
-      type: "LOGOUT",
-    })) as ExtensionMessageResponse;
-
-    statusText.textContent = response.ok ? "Logged out." : response.message;
-    await refreshIdentity();
-  });
+  if (!config?.sessionToken) {
+    void ensureDiscordOAuthStarted();
+  }
 }
 
-async function loadConfig(): Promise<void> {
+async function ensureDiscordOAuthStarted(): Promise<void> {
+  const config = await getStoredConfig();
+
+  if (!config || config.sessionToken || config.authRequestId) {
+    return;
+  }
+
+  const response = (await chrome.runtime.sendMessage({
+    type: "START_DISCORD_OAUTH",
+  })) as ExtensionMessageResponse;
+
+  if (!response.ok) {
+    statusText.textContent = "디스코드 로그인 시작에 실패했습니다.";
+    return;
+  }
+
+  statusText.textContent = "디스코드 로그인 창을 열었습니다. 완료되면 자동으로 반영됩니다.";
+  startAuthPolling();
+}
+
+function startAuthPolling(): void {
+  if (authPollTimer !== null) {
+    return;
+  }
+
+  authPollTimer = window.setInterval(() => {
+    void pollDiscordOAuth();
+  }, 2000);
+}
+
+function stopAuthPolling(): void {
+  if (authPollTimer === null) {
+    return;
+  }
+
+  window.clearInterval(authPollTimer);
+  authPollTimer = null;
+}
+
+async function pollDiscordOAuth(): Promise<void> {
+  const response = (await chrome.runtime.sendMessage({
+    type: "POLL_DISCORD_OAUTH",
+  })) as ExtensionMessageResponse;
+
+  if (!response.ok) {
+    return;
+  }
+
+  stopAuthPolling();
+  statusText.textContent = "디스코드 계정 연결이 완료되었습니다.";
+  await refreshIdentity();
+  await refreshStatus();
+}
+
+async function loadConfig(): Promise<ExtensionConfig | null> {
   const config = await getStoredConfig();
 
   if (!config) {
     workerUrlText.textContent = DEFAULT_WORKER_API_BASE_URL;
-    return;
+    groupIdText.textContent = "미설정";
+    return null;
   }
 
   workerUrlText.textContent = config.apiBaseUrl || DEFAULT_WORKER_API_BASE_URL;
-  groupIdInput.value = config.groupId;
+  groupIdText.textContent = config.groupId?.trim() || "미설정";
+  return config;
 }
 
 async function getStoredConfig(): Promise<ExtensionConfig | null> {
@@ -143,7 +122,7 @@ async function refreshIdentity(): Promise<void> {
   })) as ExtensionMessageResponse;
 
   if (!response.ok || !response.data) {
-    identityText.textContent = "Not signed in.";
+    identityText.textContent = "로그인되지 않음.";
     return;
   }
 
@@ -154,22 +133,22 @@ async function refreshIdentity(): Promise<void> {
     groupId?: string | null;
   };
 
-  if (session.groupId) {
-    groupIdInput.value = session.groupId;
-  }
-
-  identityText.textContent = `Discord ${session.discordUserId}, extension ${session.extensionUserId}, expires ${new Date(session.expiresAt).toLocaleString()}`;
+  groupIdText.textContent = session.groupId?.trim() || groupIdText.textContent || "미설정";
+  identityText.textContent = `디스코드 ${session.discordUserId}, 확장 ${session.extensionUserId}, 만료 ${new Date(session.expiresAt).toLocaleString()}`;
 }
 
 function updateStatusText(state: CachedBlockState | null): void {
   if (!state) {
-    statusText.textContent = "No synced state yet.";
+    statusText.textContent = "아직 동기화된 상태가 없습니다.";
     return;
   }
 
   const syncedAtText = state.syncedAt
     ? new Date(state.syncedAt).toLocaleTimeString()
-    : "unknown";
+    : "알 수 없음";
+  const stateLabel = state.state === "LOCKED" ? "차단됨" : "허용됨";
+  const sourceLabel =
+    state.source === "worker" ? "서버" : state.source === "cache" ? "캐시" : "관리자";
 
-  statusText.textContent = `State: ${state.state} (${state.source}, ${syncedAtText})`;
+  statusText.textContent = `현재 상태: ${stateLabel} (${sourceLabel}, ${syncedAtText})`;
 }

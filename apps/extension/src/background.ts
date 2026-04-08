@@ -63,10 +63,13 @@ const handleMessage = async (
 
   if (message.type === "SET_EXTENSION_CONFIG") {
     const currentConfig = await getExtensionConfig();
+    const apiBaseUrl =
+      normalizeWorkerApiBaseUrl(currentConfig?.apiBaseUrl) ??
+      DEFAULT_WORKER_API_BASE_URL;
     await chrome.storage.local.set({
       [STORAGE_KEYS.config]: {
         ...message.payload,
-        apiBaseUrl: currentConfig?.apiBaseUrl ?? DEFAULT_WORKER_API_BASE_URL,
+        apiBaseUrl,
       } satisfies ExtensionConfig,
     });
 
@@ -120,9 +123,9 @@ const syncAndBroadcastState = async (): Promise<CachedBlockState | null> => {
 };
 
 const syncBlockState = async (): Promise<CachedBlockState | null> => {
-  const config = await ensureDefaultConfig();
+  const config = await getNormalizedExtensionConfig();
 
-  if (!config?.apiBaseUrl || !config.sessionToken) {
+  if (!config.apiBaseUrl || !config.sessionToken) {
     return getLastKnownState();
   }
 
@@ -190,13 +193,14 @@ const startDiscordOAuth = async (): Promise<{
   authRequestId: string;
   authUrl: string;
 } | null> => {
-  const config = await getExtensionConfig();
+  const config = await getNormalizedExtensionConfig();
+  const apiBaseUrl = config.apiBaseUrl;
 
-  if (!config?.apiBaseUrl) {
+  if (!apiBaseUrl) {
     return null;
   }
 
-  const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/auth/discord/start`, {
+  const response = await fetch(`${apiBaseUrl}/auth/discord/start`, {
     method: "POST",
   });
 
@@ -210,14 +214,23 @@ const startDiscordOAuth = async (): Promise<{
     return null;
   }
 
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.config]: {
-      ...config,
-      extensionUserId: data.data.extensionUserId,
-      authRequestId: data.data.authRequestId,
+  const nextConfig: ExtensionConfig = {
+    ...(config ?? {
+      apiBaseUrl: DEFAULT_WORKER_API_BASE_URL,
+      groupId: "",
+      extensionUserId: null,
       discordUserId: null,
       sessionToken: null,
-    } satisfies ExtensionConfig,
+      authRequestId: null,
+    }),
+    extensionUserId: data.data.extensionUserId,
+    authRequestId: data.data.authRequestId,
+    discordUserId: null,
+    sessionToken: null,
+  };
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.config]: nextConfig,
   });
 
   return data.data;
@@ -226,14 +239,11 @@ const startDiscordOAuth = async (): Promise<{
 const ensureGroupIdForDiscordUser = async (
   discordUserId: string,
 ): Promise<string | null> => {
-  const config = await getExtensionConfig();
-
-  if (!config?.apiBaseUrl) {
-    return null;
-  }
+  const config = await getNormalizedExtensionConfig();
+  const apiBaseUrl = config.apiBaseUrl;
 
   const response = await fetch(
-    `${config.apiBaseUrl.replace(/\/$/, "")}/users/${encodeURIComponent(discordUserId)}/group`,
+    `${apiBaseUrl}/users/${encodeURIComponent(discordUserId)}/group`,
     {
       method: "GET",
     },
@@ -272,14 +282,15 @@ const pollDiscordOAuth = async (): Promise<{
   sessionToken: string;
   expiresAt: number;
 } | null> => {
-  const config = await getExtensionConfig();
+  const config = await getNormalizedExtensionConfig();
+  const apiBaseUrl = config.apiBaseUrl;
 
-  if (!config?.apiBaseUrl || !config.authRequestId) {
+  if (!config.authRequestId) {
     return null;
   }
 
   const response = await fetch(
-    `${config.apiBaseUrl.replace(/\/$/, "")}/auth/discord/pending/${encodeURIComponent(config.authRequestId)}`,
+    `${apiBaseUrl}/auth/discord/pending/${encodeURIComponent(config.authRequestId)}`,
     {
       method: "GET",
     },
@@ -316,13 +327,14 @@ const getSessionInfo = async (): Promise<{
   expiresAt: number;
   groupId?: string | null;
 } | null> => {
-  const config = await getExtensionConfig();
+  const config = await getNormalizedExtensionConfig();
+  const apiBaseUrl = config.apiBaseUrl;
 
-  if (!config?.apiBaseUrl || !config.sessionToken) {
+  if (!config.sessionToken) {
     return null;
   }
 
-  const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/auth/session`, {
+  const response = await fetch(`${apiBaseUrl}/auth/session`, {
     method: "GET",
     headers: {
       authorization: `Bearer ${config.sessionToken}`,
@@ -348,13 +360,14 @@ const getSessionInfo = async (): Promise<{
 };
 
 const logoutSession = async (): Promise<boolean> => {
-  const config = await getExtensionConfig();
+  const config = await getNormalizedExtensionConfig();
+  const apiBaseUrl = config.apiBaseUrl;
 
-  if (!config?.apiBaseUrl || !config.sessionToken) {
+  if (!config.sessionToken) {
     return false;
   }
 
-  const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, "")}/auth/logout`, {
+  const response = await fetch(`${apiBaseUrl}/auth/logout`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${config.sessionToken}`,
@@ -384,8 +397,11 @@ const getExtensionConfig = async (): Promise<ExtensionConfig | null> => {
 
 const ensureDefaultConfig = async (): Promise<ExtensionConfig> => {
   const existing = await getExtensionConfig();
+  const normalizedApiBaseUrl =
+    normalizeWorkerApiBaseUrl(existing?.apiBaseUrl) ||
+    DEFAULT_WORKER_API_BASE_URL;
   const nextConfig: ExtensionConfig = {
-    apiBaseUrl: existing?.apiBaseUrl?.trim() || DEFAULT_WORKER_API_BASE_URL,
+    apiBaseUrl: normalizedApiBaseUrl,
     groupId: existing?.groupId?.trim() ?? "",
     extensionUserId: existing?.extensionUserId ?? null,
     discordUserId: existing?.discordUserId ?? null,
@@ -398,6 +414,35 @@ const ensureDefaultConfig = async (): Promise<ExtensionConfig> => {
   });
 
   return nextConfig;
+};
+
+const getNormalizedExtensionConfig = async (): Promise<ExtensionConfig> => {
+  const config = await ensureDefaultConfig();
+
+  if (config.apiBaseUrl === DEFAULT_WORKER_API_BASE_URL) {
+    return config;
+  }
+
+  return config;
+};
+
+const normalizeWorkerApiBaseUrl = (value: string | null | undefined): string | null => {
+  const normalized = value?.trim();
+
+  if (!normalized || normalized.includes("<your-subdomain>")) {
+    return null;
+  }
+
+  try {
+    const url = new URL(normalized);
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+};
+
+const resolveWorkerApiBaseUrl = (value: string | null | undefined): string | null => {
+  return normalizeWorkerApiBaseUrl(value) ?? DEFAULT_WORKER_API_BASE_URL;
 };
 
 const getLastKnownState = async (): Promise<CachedBlockState | null> => {

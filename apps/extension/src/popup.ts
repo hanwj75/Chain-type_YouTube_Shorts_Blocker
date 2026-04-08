@@ -5,10 +5,10 @@ import {
 } from "./config.js";
 import type { ExtensionMessageResponse } from "./messages.js";
 
-const statusText = document.getElementById("status-text") as HTMLParagraphElement;
-const identityText = document.getElementById("identity-text") as HTMLParagraphElement;
-const workerUrlText = document.getElementById("worker-url-text") as HTMLParagraphElement;
-const groupIdText = document.getElementById("group-id-text") as HTMLParagraphElement;
+const statusText = getRequiredElement<HTMLParagraphElement>("status-text");
+const identityText = getRequiredElement<HTMLParagraphElement>("identity-text");
+const workerUrlText = getRequiredElement<HTMLParagraphElement>("worker-url-text");
+const groupIdText = getRequiredElement<HTMLParagraphElement>("group-id-text");
 
 let authPollTimer: number | null = null;
 
@@ -151,4 +151,14 @@ function updateStatusText(state: CachedBlockState | null): void {
     state.source === "worker" ? "서버" : state.source === "cache" ? "캐시" : "관리자";
 
   statusText.textContent = `현재 상태: ${stateLabel} (${sourceLabel}, ${syncedAtText})`;
+}
+
+function getRequiredElement<T extends HTMLElement>(id: string): T {
+  const element = document.getElementById(id);
+
+  if (!element) {
+    throw new Error(`Missing popup element: ${id}`);
+  }
+
+  return element as T;
 }

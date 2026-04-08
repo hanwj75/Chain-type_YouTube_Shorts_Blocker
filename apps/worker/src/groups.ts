@@ -78,6 +78,39 @@ export const createGroupInRegistry = (
   }
 }
 
+export const deleteGroupFromRegistry = (
+  state: GroupRegistryState,
+  groupId: string,
+): { ok: true; state: GroupRegistryState; deletedGroup: Group } | { ok: false; reason: string } => {
+  const group = state.groupsById[groupId]
+
+  if (!group) {
+    return {
+      ok: false,
+      reason: 'Group was not found.',
+    }
+  }
+
+  const nextGroupsById = { ...state.groupsById }
+  delete nextGroupsById[groupId]
+
+  const nextGroupIdByUserId = { ...state.groupIdByUserId }
+  for (const member of group.members) {
+    if (nextGroupIdByUserId[member.userId] === groupId) {
+      delete nextGroupIdByUserId[member.userId]
+    }
+  }
+
+  return {
+    ok: true,
+    deletedGroup: group,
+    state: {
+      groupsById: nextGroupsById,
+      groupIdByUserId: nextGroupIdByUserId,
+    },
+  }
+}
+
 export const getGroupByIdFromRegistry = (
   state: GroupRegistryState,
   groupId: string,

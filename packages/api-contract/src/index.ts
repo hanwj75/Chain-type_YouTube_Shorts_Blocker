@@ -155,6 +155,15 @@ export type CreateGroupResponse = ApiResponse<{
   group: Group;
 }>;
 
+export type DeleteGroupParams = {
+  groupId: string;
+};
+
+export type DeleteGroupResponse = ApiResponse<{
+  groupId: string;
+  deleted: true;
+}>;
+
 export type StartDiscordOAuthResponse = ApiResponse<OAuthStartData>;
 
 export type GetDiscordOAuthPendingParams = {
@@ -216,6 +225,12 @@ export type ApiContract = {
     POST: {
       body: CreateGroupBody;
       response: CreateGroupResponse;
+    };
+  };
+  "/admin/groups/:groupId": {
+    DELETE: {
+      params: DeleteGroupParams;
+      response: DeleteGroupResponse;
     };
   };
   "/auth/discord/start": {

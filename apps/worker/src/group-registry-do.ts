@@ -1,6 +1,7 @@
 import type {
   CreateGroupBody,
   CreateGroupResponse,
+  DeleteGroupResponse,
   GetGroupResponse,
   GetUserGroupResponse,
 } from "@youtube-shorts-chain-blocker/api-contract";
@@ -8,6 +9,7 @@ import type { DurableObjectState } from "./cloudflare.js";
 import {
   createGroupInRegistry,
   createInitialGroupRegistryState,
+  deleteGroupFromRegistry,
   getGroupByIdFromRegistry,
   getGroupByUserIdFromRegistry,
   type GroupRegistryState,
@@ -30,6 +32,11 @@ export class GroupRegistryDurableObject {
     if (request.method === 'GET' && url.pathname.startsWith('/internal/groups/')) {
       const groupId = getLastPathSegment(url.pathname)
       return this.handleGetGroup(groupId)
+    }
+
+    if (request.method === 'DELETE' && url.pathname.startsWith('/internal/groups/')) {
+      const groupId = getLastPathSegment(url.pathname)
+      return this.handleDeleteGroup(groupId)
     }
 
     if (
@@ -105,6 +112,29 @@ export class GroupRegistryDurableObject {
       success: true,
       data: {
         group,
+      },
+    }
+
+    return jsonSuccess(response.data)
+  }
+
+  private async handleDeleteGroup(groupId: string): Promise<Response> {
+    const state = await this.loadState()
+    const result = deleteGroupFromRegistry(state, groupId)
+
+    if (!result.ok) {
+      return jsonError('GROUP_NOT_FOUND', 'Group was not found.', {
+        status: 404,
+      })
+    }
+
+    await this.persistState(result.state)
+
+    const response: DeleteGroupResponse = {
+      success: true,
+      data: {
+        groupId,
+        deleted: true,
       },
     }
 

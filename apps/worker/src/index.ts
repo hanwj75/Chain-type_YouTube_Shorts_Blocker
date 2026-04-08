@@ -2,6 +2,7 @@ import type {
   ApiResponse,
   CastVoteBody,
   CreateGroupBody,
+  DeleteGroupResponse,
   CreateRequestBody,
   RequestSummary,
 } from "@youtube-shorts-chain-blocker/api-contract";
@@ -126,6 +127,12 @@ const routes: RouteDefinition[] = [
     method: "POST",
     pathname: /^\/admin\/groups$/,
     handler: handleCreateGroup,
+    authRequired: false,
+  },
+  {
+    method: "DELETE",
+    pathname: /^\/admin\/groups\/(?<groupId>[^/]+)$/,
+    handler: handleDeleteGroup,
     authRequired: false,
   },
   {
@@ -623,6 +630,59 @@ async function handleRegisterDiscordCommands(
     registered: result.data.commands.length,
     commands: result.data.commands.map((command) => command.name),
   });
+}
+
+async function handleDeleteGroup(
+  request: Request,
+  env: WorkerEnv,
+  _ctx: ExecutionContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  if (request.headers.get("authorization") !== `Bearer ${env.ADMIN_API_TOKEN}`) {
+    return jsonError("INVALID_AUTH", "Admin authentication failed.", {
+      status: 401,
+    });
+  }
+
+  const groupId = params.groupId;
+
+  if (!isNonEmptyString(groupId)) {
+    return jsonError("INVALID_REQUEST", "Invalid group id.", {
+      status: 400,
+    });
+  }
+
+  const groupResponse = await forwardToGroupDurableObject(env, groupId, "/internal/group", {
+    method: "DELETE",
+  });
+
+  if (!groupResponse.ok) {
+    return jsonError("GROUP_NOT_FOUND", "Group was not found.", {
+      status: 404,
+    });
+  }
+
+  const registryResponse = await forwardToGroupRegistryDurableObject(
+    env,
+    `/internal/groups/${groupId}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (!registryResponse.ok) {
+    return registryResponse;
+  }
+
+  const response: DeleteGroupResponse = {
+    success: true,
+    data: {
+      groupId,
+      deleted: true,
+    },
+  };
+
+  return jsonSuccess(response.data);
 }
 
 const matchRoute = (

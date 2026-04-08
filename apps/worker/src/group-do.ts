@@ -40,6 +40,10 @@ export class GroupDurableObject {
       return this.handleGetGroup(groupId);
     }
 
+    if (request.method === "DELETE" && url.pathname === "/internal/group") {
+      return this.handleDeleteGroup(groupId);
+    }
+
     if (
       request.method === "GET" &&
       url.pathname.startsWith("/internal/users/") &&
@@ -96,6 +100,21 @@ export class GroupDurableObject {
     };
 
     return jsonSuccess(response.data);
+  }
+
+  private async handleDeleteGroup(groupId: string): Promise<Response> {
+    const state = await this.loadOrInitializeState(groupId);
+
+    if (!state.ok) {
+      return state.response;
+    }
+
+    await this.state.storage.delete(STORAGE_KEY);
+
+    return jsonSuccess({
+      groupId,
+      deleted: true,
+    });
   }
 
   private async handleGetUserState(

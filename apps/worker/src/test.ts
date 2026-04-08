@@ -29,6 +29,10 @@ class MemoryDurableObjectStorage implements DurableObjectStorage {
   async put<T>(key: string, value: T): Promise<void> {
     this.store.set(key, value);
   }
+
+  async delete(key: string): Promise<void> {
+    this.store.delete(key);
+  }
 }
 
 class MemoryGroupDurableObjectNamespace implements DurableObjectNamespace {
@@ -141,6 +145,7 @@ const ctx: ExecutionContext = {
 const run = async (): Promise<void> => {
   const env = createTestEnv();
   await createGroup(env, "group-1", ["A", "B", "C"]);
+  await runGroupDeleteTest(env);
   await runDiscordGroupCreationFlowTest();
   await runDiscordCommandRegistrationTest();
   const extensionSession = await createExtensionSession(env, "A");
@@ -1058,6 +1063,35 @@ const createGroup = async (
   if (!response.ok) {
     throw new Error("Failed to create test group.");
   }
+};
+
+const runGroupDeleteTest = async (env: WorkerEnv): Promise<void> => {
+  await createGroup(env, "group-delete", ["D", "E", "F"]);
+  const extensionSession = await createExtensionSession(env, "A");
+  const deleteResponse = await callWorker(env, "DELETE", "/admin/groups/group-delete", {
+    headers: {
+      authorization: `Bearer ${env.ADMIN_API_TOKEN}`,
+    },
+  });
+  const deleteBody = await deleteResponse.json();
+
+  assert(deleteResponse.status === 200, "group delete must succeed");
+  assert(deleteBody.data.deleted === true, "group delete must report deleted true");
+  assert(deleteBody.data.groupId === "group-delete", "group delete must echo group id");
+
+  const groupResponse = await callWorker(env, "GET", "/groups/group-delete");
+  const groupBody = await groupResponse.json();
+
+  assert(groupResponse.status === 404, "deleted group must not be retrievable");
+  assert(groupBody.errorCode === "GROUP_NOT_FOUND", "deleted group lookup must fail");
+
+  const stateResponse = await callWorker(env, "GET", "/users/A/state", {
+    headers: authorizedHeaders("extension", "group-delete", extensionSession),
+  });
+  const stateBody = await stateResponse.json();
+
+  assert(stateResponse.status === 404, "deleted group state must not be retrievable");
+  assert(stateBody.errorCode === "GROUP_NOT_FOUND", "deleted group state lookup must fail");
 };
 
 const authorizedHeaders = (

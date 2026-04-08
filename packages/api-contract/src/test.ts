@@ -109,6 +109,18 @@ const contract: ApiContract = {
       },
     },
   },
+  "/admin/groups/:groupId": {
+    DELETE: {
+      params: { groupId: "group-1" },
+      response: {
+        success: true,
+        data: {
+          groupId: "group-1",
+          deleted: true,
+        },
+      },
+    },
+  },
   "/requests": {
     POST: {
       body: createRequestBody,

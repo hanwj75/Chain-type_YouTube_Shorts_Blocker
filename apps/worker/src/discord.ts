@@ -35,6 +35,21 @@ type DiscordApplicationCommandOption = {
   value?: string;
 };
 
+type DiscordApplicationCommandOptionDefinition = {
+  name: string;
+  description: string;
+  type: number;
+  required?: boolean;
+};
+
+type DiscordApplicationCommandDefinition = {
+  name: string;
+  description: string;
+  type?: number;
+  options?: DiscordApplicationCommandOptionDefinition[];
+  dm_permission?: boolean;
+};
+
 type DiscordApplicationCommandData = {
   id: string;
   name: string;
@@ -229,6 +244,47 @@ const handleApplicationCommand = async (
       components: message.components,
     },
   });
+};
+
+export const registerDiscordGlobalCommands = async (
+  env: WorkerEnv,
+): Promise<ApiResponse<{ commands: DiscordApplicationCommandDefinition[] }>> => {
+  if (!env.DISCORD_API_TOKEN || !env.DISCORD_CLIENT_ID) {
+    return {
+      success: false,
+      errorCode: "DISCORD_COMMAND_REGISTRATION_FAILED",
+      message: "Discord application credentials are missing.",
+    };
+  }
+
+  const commands = buildDiscordGlobalCommands();
+  const baseUrl = env.DISCORD_API_BASE_URL ?? "https://discord.com/api/v10";
+  const response = await fetch(
+    `${baseUrl}/applications/${env.DISCORD_CLIENT_ID}/commands`,
+    {
+      method: "PUT",
+      headers: {
+        authorization: `Bot ${env.DISCORD_API_TOKEN}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(commands),
+    },
+  );
+
+  if (!response.ok) {
+    return {
+      success: false,
+      errorCode: "DISCORD_COMMAND_REGISTRATION_FAILED",
+      message: `Discord command registration failed with status ${response.status}.`,
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      commands,
+    },
+  };
 };
 
 const handleCreateGroupCommand = async (
@@ -437,6 +493,59 @@ const isCreateGroupCommand = (commandName: string): boolean => {
   return commandName === "group" || commandName === "group-create" || commandName === "create-group";
 };
 
+const buildDiscordGlobalCommands = (): DiscordApplicationCommandDefinition[] => {
+  return [
+    {
+      name: "group-create",
+      description: "Create a 3-person group.",
+      options: [
+        {
+          name: "user1",
+          description: "First group member.",
+          type: 6,
+          required: true,
+        },
+        {
+          name: "user2",
+          description: "Second group member.",
+          type: 6,
+          required: true,
+        },
+        {
+          name: "user3",
+          description: "Third group member.",
+          type: 6,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "lock",
+      description: "Create a lock request for a target user.",
+      options: [
+        {
+          name: "user",
+          description: "Target user.",
+          type: 6,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "unlock",
+      description: "Create an unlock request for a target user.",
+      options: [
+        {
+          name: "user",
+          description: "Target user.",
+          type: 6,
+          required: true,
+        },
+      ],
+    },
+  ];
+};
+
 const mapCommandToRequestType = (commandName: string): RequestType | null => {
   if (commandName === "lock") {
     return "LOCK_REQUEST";
@@ -476,6 +585,7 @@ const formatErrorMessage = (errorCode: ErrorCode): string => {
     REQUEST_GROUP_MISMATCH: "Request group mismatch.",
     INVALID_REQUEST_TYPE_FOR_STATE: "This request direction is not allowed for the current state.",
     GROUP_ALREADY_EXISTS: "A group already exists for this server.",
+    DISCORD_COMMAND_REGISTRATION_FAILED: "Discord command registration failed.",
   };
 
   return messages[errorCode];

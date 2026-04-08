@@ -142,6 +142,7 @@ const run = async (): Promise<void> => {
   const env = createTestEnv();
   await createGroup(env, "group-1", ["A", "B", "C"]);
   await runDiscordGroupCreationFlowTest();
+  await runDiscordCommandRegistrationTest();
   const extensionSession = await createExtensionSession(env, "A");
   await runPublicOAuthFlowTest();
 
@@ -958,6 +959,81 @@ const runDiscordGroupCreationFlowTest = async (): Promise<void> => {
     groupBody.data.group.members.length === 3,
     "created group must contain exactly 3 members",
   );
+};
+
+const runDiscordCommandRegistrationTest = async (): Promise<void> => {
+  const env = createTestEnv();
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method: string; body: string }> = [];
+
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      method: init?.method ?? "GET",
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+
+    return Response.json([
+      { id: "cmd-1" },
+      { id: "cmd-2" },
+      { id: "cmd-3" },
+    ]);
+  };
+
+  try {
+    const response = await callWorker(env, "POST", "/admin/discord/commands/register", {
+      headers: {
+        authorization: `Bearer ${env.ADMIN_API_TOKEN}`,
+        "content-type": "application/json",
+      },
+    });
+    const body = await response.json();
+
+    assert(response.status === 200, "discord command registration must succeed");
+    assert(body.data.registered === 3, "three global commands must be registered");
+    assert(
+      body.data.commands.includes("group-create") &&
+        body.data.commands.includes("lock") &&
+        body.data.commands.includes("unlock"),
+      "registered command names must match the expected global commands",
+    );
+
+    const registrationRequest = requests.find((entry) =>
+      entry.url.includes("/applications/client-id/commands"),
+    );
+
+    assert(registrationRequest !== undefined, "discord registration request must be issued");
+    assert(registrationRequest?.method === "PUT", "discord registration must use PUT");
+
+    const payload = JSON.parse(registrationRequest?.body ?? "[]") as Array<{
+      name: string;
+      options?: Array<{ name: string; type: number; required?: boolean }>;
+    }>;
+
+    assert(payload.length === 3, "discord global registration payload must contain three commands");
+    assert(
+      payload[0]?.name === "group-create" &&
+        payload[0]?.options?.length === 3 &&
+        payload[0]?.options?.every((option) => option.type === 6 && option.required === true),
+      "group-create command payload must define three required user options",
+    );
+    assert(
+      payload[1]?.name === "lock" &&
+        payload[1]?.options?.[0]?.name === "user" &&
+        payload[1]?.options?.[0]?.type === 6 &&
+        payload[1]?.options?.[0]?.required === true,
+      "lock command payload must define one required user option",
+    );
+    assert(
+      payload[2]?.name === "unlock" &&
+        payload[2]?.options?.[0]?.name === "user" &&
+        payload[2]?.options?.[0]?.type === 6 &&
+        payload[2]?.options?.[0]?.required === true,
+      "unlock command payload must define one required user option",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 };
 
 const createGroup = async (

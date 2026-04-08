@@ -32,7 +32,10 @@ import {
 } from "./auth.js";
 import type { ExecutionContext, WorkerEnv } from "./cloudflare.js";
 import { AuthDurableObject } from "./auth-do.js";
-import { handleDiscordInteraction } from "./discord.js";
+import {
+  handleDiscordInteraction,
+  registerDiscordGlobalCommands,
+} from "./discord.js";
 import { GroupDurableObject } from "./group-do.js";
 import { GroupRegistryDurableObject } from "./group-registry-do.js";
 import { buildCorsPreflightResponse, jsonError, withCors, jsonSuccess } from "./http.js";
@@ -123,6 +126,12 @@ const routes: RouteDefinition[] = [
     method: "POST",
     pathname: /^\/admin\/groups$/,
     handler: handleCreateGroup,
+    authRequired: false,
+  },
+  {
+    method: "POST",
+    pathname: /^\/admin\/discord\/commands\/register$/,
+    handler: handleRegisterDiscordCommands,
     authRequired: false,
   },
 ];
@@ -589,6 +598,30 @@ async function handleCreateGroup(
       "content-type": "application/json",
     },
     body: JSON.stringify(body.value),
+  });
+}
+
+async function handleRegisterDiscordCommands(
+  request: Request,
+  env: WorkerEnv,
+): Promise<Response> {
+  if (request.headers.get("authorization") !== `Bearer ${env.ADMIN_API_TOKEN}`) {
+    return jsonError("INVALID_AUTH", "Admin authentication failed.", {
+      status: 401,
+    });
+  }
+
+  const result = await registerDiscordGlobalCommands(env);
+
+  if (!result.success) {
+    return jsonError(result.errorCode, result.message, {
+      status: 502,
+    });
+  }
+
+  return jsonSuccess({
+    registered: result.data.commands.length,
+    commands: result.data.commands.map((command) => command.name),
   });
 }
 

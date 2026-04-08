@@ -33,7 +33,8 @@ export type ErrorCode =
   | "TARGET_NOT_IN_GROUP"
   | "REQUEST_GROUP_MISMATCH"
   | "INVALID_REQUEST_TYPE_FOR_STATE"
-  | "GROUP_ALREADY_EXISTS";
+  | "GROUP_ALREADY_EXISTS"
+  | "DISCORD_COMMAND_REGISTRATION_FAILED";
 
 export type ApiSuccess<T> = {
   success: true;

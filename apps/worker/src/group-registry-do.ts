@@ -128,6 +128,10 @@ const mapGroupErrorCode = (reason: string) => {
     return 'USER_ALREADY_IN_GROUP' as const
   }
 
+  if (reason === 'Group id already exists.') {
+    return 'GROUP_ALREADY_EXISTS' as const
+  }
+
   return 'INVALID_GROUP_MEMBERS' as const
 }
 

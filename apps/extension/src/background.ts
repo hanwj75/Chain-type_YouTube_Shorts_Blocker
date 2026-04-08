@@ -1,6 +1,7 @@
 import type {
   GetDiscordOAuthPendingResponse,
   GetSessionResponse,
+  GetUserGroupResponse,
   GetUserStateResponse,
   StartDiscordOAuthResponse,
 } from "@youtube-shorts-chain-blocker/api-contract";
@@ -12,7 +13,6 @@ import {
   type CachedBlockState,
   type ExtensionConfig,
 } from "./config.js";
-import { isConfigured } from "./config.js";
 import type {
   ExtensionMessage,
   ExtensionMessageResponse,
@@ -120,15 +120,21 @@ const syncAndBroadcastState = async (): Promise<CachedBlockState | null> => {
 };
 
 const syncBlockState = async (): Promise<CachedBlockState | null> => {
-  const config = await getExtensionConfig();
+  const config = await ensureDefaultConfig();
 
-  if (!config || !isConfigured(config)) {
+  if (!config?.apiBaseUrl || !config.sessionToken) {
     return getLastKnownState();
   }
 
   const session = await getSessionInfo();
 
-  if (!session?.discordUserId || !config.sessionToken) {
+  if (!session?.discordUserId) {
+    return getLastKnownState();
+  }
+
+  const groupId = session.groupId ?? (await ensureGroupIdForDiscordUser(session.discordUserId));
+
+  if (!groupId) {
     return getLastKnownState();
   }
 
@@ -140,7 +146,7 @@ const syncBlockState = async (): Promise<CachedBlockState | null> => {
         headers: {
           authorization: `Bearer ${config.sessionToken}`,
           "x-client-type": "extension",
-          "x-group-id": config.groupId,
+          "x-group-id": groupId,
         },
       },
     );
@@ -217,6 +223,49 @@ const startDiscordOAuth = async (): Promise<{
   return data.data;
 };
 
+const ensureGroupIdForDiscordUser = async (
+  discordUserId: string,
+): Promise<string | null> => {
+  const config = await getExtensionConfig();
+
+  if (!config?.apiBaseUrl) {
+    return null;
+  }
+
+  const response = await fetch(
+    `${config.apiBaseUrl.replace(/\/$/, "")}/users/${encodeURIComponent(discordUserId)}/group`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = (await response.json()) as GetUserGroupResponse;
+
+  if (!data.success) {
+    return null;
+  }
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.config]: {
+      ...(config ?? {
+        apiBaseUrl: DEFAULT_WORKER_API_BASE_URL,
+        groupId: "",
+        extensionUserId: null,
+        discordUserId: null,
+        sessionToken: null,
+        authRequestId: null,
+      }),
+      groupId: data.data.group.id,
+    } satisfies ExtensionConfig,
+  });
+
+  return data.data.group.id;
+};
+
 const pollDiscordOAuth = async (): Promise<{
   extensionUserId: string;
   discordUserId: string;
@@ -256,6 +305,8 @@ const pollDiscordOAuth = async (): Promise<{
     } satisfies ExtensionConfig,
   });
 
+  await ensureGroupIdForDiscordUser(data.data.mapping.discordUserId);
+
   return data.data.mapping;
 };
 
@@ -263,6 +314,7 @@ const getSessionInfo = async (): Promise<{
   extensionUserId: string;
   discordUserId: string;
   expiresAt: number;
+  groupId?: string | null;
 } | null> => {
   const config = await getExtensionConfig();
 
@@ -283,7 +335,16 @@ const getSessionInfo = async (): Promise<{
 
   const data = (await response.json()) as GetSessionResponse;
 
-  return data.success ? data.data : null;
+  if (!data.success) {
+    return null;
+  }
+
+  const groupId = await ensureGroupIdForDiscordUser(data.data.discordUserId);
+
+  return {
+    ...data.data,
+    groupId,
+  };
 };
 
 const logoutSession = async (): Promise<boolean> => {

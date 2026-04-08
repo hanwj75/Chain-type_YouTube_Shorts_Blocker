@@ -151,7 +151,12 @@ async function refreshIdentity(): Promise<void> {
     extensionUserId: string;
     discordUserId: string;
     expiresAt: number;
+    groupId?: string | null;
   };
+
+  if (session.groupId) {
+    groupIdInput.value = session.groupId;
+  }
 
   identityText.textContent = `Discord ${session.discordUserId}, extension ${session.extensionUserId}, expires ${new Date(session.expiresAt).toLocaleString()}`;
 }

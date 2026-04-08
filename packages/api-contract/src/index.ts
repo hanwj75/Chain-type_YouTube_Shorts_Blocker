@@ -32,7 +32,8 @@ export type ErrorCode =
   | "REQUESTER_NOT_IN_GROUP"
   | "TARGET_NOT_IN_GROUP"
   | "REQUEST_GROUP_MISMATCH"
-  | "INVALID_REQUEST_TYPE_FOR_STATE";
+  | "INVALID_REQUEST_TYPE_FOR_STATE"
+  | "GROUP_ALREADY_EXISTS";
 
 export type ApiSuccess<T> = {
   success: true;

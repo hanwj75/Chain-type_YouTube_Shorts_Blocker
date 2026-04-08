@@ -141,6 +141,7 @@ const ctx: ExecutionContext = {
 const run = async (): Promise<void> => {
   const env = createTestEnv();
   await createGroup(env, "group-1", ["A", "B", "C"]);
+  await runDiscordGroupCreationFlowTest();
   const extensionSession = await createExtensionSession(env, "A");
   await runPublicOAuthFlowTest();
 
@@ -905,6 +906,58 @@ const runLocalIntegrationFlowTest = async (): Promise<void> => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+};
+
+const runDiscordGroupCreationFlowTest = async (): Promise<void> => {
+  const env = createTestEnv();
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "Ed25519",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const publicKeyBytes = new Uint8Array(
+    await crypto.subtle.exportKey("raw", keyPair.publicKey),
+  );
+  env.DISCORD_PUBLIC_KEY = bytesToHex(publicKeyBytes);
+
+  const response = await callSignedDiscordInteraction(env, keyPair.privateKey, {
+    id: "group-create-interaction",
+    application_id: "app-1",
+    type: 2,
+    token: "group-create-token",
+    guild_id: "group-1",
+    member: {
+      user: { id: "ADMIN" },
+    },
+    data: {
+      id: "cmd-group-create",
+      name: "group-create",
+      options: [
+        { name: "user1", type: 6, value: "A" },
+        { name: "user2", type: 6, value: "B" },
+        { name: "user3", type: 6, value: "C" },
+      ],
+    },
+  });
+
+  const body = await response.json();
+
+  assert(response.status === 200, "discord group-create command must succeed");
+  assert(
+    body.data.content.includes("Group group-1 created"),
+    "discord group-create command must confirm the created group",
+  );
+
+  const groupResponse = await callWorker(env, "GET", "/groups/group-1");
+  const groupBody = await groupResponse.json();
+
+  assert(groupResponse.status === 200, "created group must be retrievable");
+  assert(
+    groupBody.data.group.members.length === 3,
+    "created group must contain exactly 3 members",
+  );
 };
 
 const createGroup = async (

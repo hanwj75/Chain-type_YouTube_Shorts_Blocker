@@ -361,6 +361,16 @@ async function handleDiscordInteractions(
             targetUserId: body.targetUserId,
             type: body.type,
           }),
+          }),
+      ),
+    createGroup: async (body) =>
+      parseApiResponse<{ group: Group }>(
+        await forwardToGroupRegistryDurableObject(env, "/internal/groups", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
         }),
       ),
     castVote: async (groupId, requestId, body) =>

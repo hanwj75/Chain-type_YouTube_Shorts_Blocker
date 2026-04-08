@@ -1,5 +1,6 @@
 import type {
   ApiResponse,
+  CreateGroupBody,
   ErrorCode,
   RequestSummary,
 } from "@youtube-shorts-chain-blocker/api-contract";
@@ -45,6 +46,7 @@ type DiscordApplicationCommandInteraction = {
   application_id: string;
   type: 2;
   token: string;
+  guild_id?: string;
   member?: {
     user?: DiscordUser;
   };
@@ -108,6 +110,7 @@ export const handleDiscordInteraction = async ({
   env,
   ctx,
   createRequest,
+  createGroup,
   castVote,
   getRequest,
   resolveGroupByUsers,
@@ -120,6 +123,7 @@ export const handleDiscordInteraction = async ({
     targetUserId: string;
     type: RequestType;
   }) => Promise<ApiResponse<{ request: RequestSummary }>>;
+  createGroup: (body: CreateGroupBody) => Promise<ApiResponse<{ group: Group }>>;
   castVote: (
     groupId: string,
     requestId: string,
@@ -154,6 +158,7 @@ export const handleDiscordInteraction = async ({
     return handleApplicationCommand(
       interaction,
       createRequest,
+      createGroup,
       resolveGroupByUsers,
     );
   }
@@ -184,8 +189,13 @@ const handleApplicationCommand = async (
     targetUserId: string;
     type: RequestType;
   }) => Promise<ApiResponse<{ request: RequestSummary }>>,
+  createGroup: (body: CreateGroupBody) => Promise<ApiResponse<{ group: Group }>>,
   resolveGroupByUsers: (userIds: string[]) => Promise<Group | null>,
 ): Promise<Response> => {
+  if (isCreateGroupCommand(interaction.data.name)) {
+    return handleCreateGroupCommand(interaction, createGroup);
+  }
+
   const requesterId = getInteractionUserId(interaction);
   const targetUserId = getCommandUserId(interaction.data.options);
   const requestType = mapCommandToRequestType(interaction.data.name);
@@ -219,6 +229,31 @@ const handleApplicationCommand = async (
       components: message.components,
     },
   });
+};
+
+const handleCreateGroupCommand = async (
+  interaction: DiscordApplicationCommandInteraction,
+  createGroup: (body: CreateGroupBody) => Promise<ApiResponse<{ group: Group }>>,
+): Promise<Response> => {
+  const guildId = interaction.guild_id;
+  const memberIds = getCommandUserIds(interaction.data.options);
+
+  if (!guildId || !memberIds) {
+    return ephemeralDiscordMessage("Invalid group creation payload.");
+  }
+
+  const result = await createGroup({
+    groupId: guildId,
+    memberIds,
+  });
+
+  if (!result.success) {
+    return ephemeralDiscordMessage(formatErrorMessage(result.errorCode));
+  }
+
+  return ephemeralDiscordMessage(
+    `Group ${result.data.group.id} created for <@${memberIds[0]}>, <@${memberIds[1]}>, <@${memberIds[2]}>.`,
+  );
 };
 
 const handleComponentInteraction = async ({
@@ -382,6 +417,26 @@ const getCommandUserId = (
   return typeof targetOption?.value === "string" ? targetOption.value : null;
 };
 
+const getCommandUserIds = (
+  options: DiscordApplicationCommandOption[] | undefined,
+): [string, string, string] | null => {
+  const userIds = (options ?? [])
+    .map((option) => (typeof option.value === "string" ? option.value : null))
+    .filter((value): value is string => Boolean(value));
+
+  const uniqueUserIds = [...new Set(userIds)];
+
+  if (uniqueUserIds.length !== 3) {
+    return null;
+  }
+
+  return [uniqueUserIds[0], uniqueUserIds[1], uniqueUserIds[2]];
+};
+
+const isCreateGroupCommand = (commandName: string): boolean => {
+  return commandName === "group" || commandName === "group-create" || commandName === "create-group";
+};
+
 const mapCommandToRequestType = (commandName: string): RequestType | null => {
   if (commandName === "lock") {
     return "LOCK_REQUEST";
@@ -420,6 +475,7 @@ const formatErrorMessage = (errorCode: ErrorCode): string => {
     TARGET_NOT_IN_GROUP: "Target user is not in the group.",
     REQUEST_GROUP_MISMATCH: "Request group mismatch.",
     INVALID_REQUEST_TYPE_FOR_STATE: "This request direction is not allowed for the current state.",
+    GROUP_ALREADY_EXISTS: "A group already exists for this server.",
   };
 
   return messages[errorCode];

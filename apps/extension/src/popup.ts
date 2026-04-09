@@ -1,3 +1,4 @@
+(() => {
 const DEFAULT_WORKER_API_BASE_URL = "https://chain-short-man.wjws9608.workers.dev";
 
 type CachedBlockState = {
@@ -176,3 +177,4 @@ function getRequiredElement<T extends HTMLElement>(id: string): T {
 
   return element as T;
 }
+})();

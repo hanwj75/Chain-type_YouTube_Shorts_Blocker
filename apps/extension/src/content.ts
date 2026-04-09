@@ -1,3 +1,4 @@
+(() => {
 const STYLE_ELEMENT_ID = "shorts-blocker-style";
 const HIDE_SHORTS_ATTRIBUTE = "hide-shorts";
 const SHORTS_REDIRECT_PATH = "/feed/subscriptions";
@@ -303,3 +304,4 @@ function shouldReapplyBlockingForNavigation({
 }): boolean {
   return previousUrl !== nextUrl;
 }
+})();

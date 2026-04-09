@@ -75,7 +75,7 @@ const routes: RouteDefinition[] = [
   },
   {
     method: "GET",
-    pathname: /^\/auth\/discord\/callback$/,
+    pathname: /^\/auth\/discord\/callback\/?$/,
     handler: handleDiscordOAuthCallback,
     authRequired: false,
   },

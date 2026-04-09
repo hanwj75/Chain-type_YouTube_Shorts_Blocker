@@ -581,6 +581,17 @@ const runPublicOAuthFlowTest = async (): Promise<void> => {
 
     assert(callback.status === 200, "oauth callback must succeed");
 
+    const callbackWithTrailingSlash = await callWorker(
+      env,
+      "GET",
+      `/auth/discord/callback/?code=oauth-code&state=${encodeURIComponent(state)}`,
+    );
+
+    assert(
+      callbackWithTrailingSlash.status !== 404,
+      "oauth callback route must accept trailing slash",
+    );
+
     const completed = await callWorker(env, "GET", `/auth/discord/pending/${authRequestId}`);
     const completedBody = await completed.json();
 

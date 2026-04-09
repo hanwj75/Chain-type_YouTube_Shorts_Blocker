@@ -1,9 +1,23 @@
-import {
-  DEFAULT_WORKER_API_BASE_URL,
-  type CachedBlockState,
-  type ExtensionConfig,
-} from "./config.js";
-import type { ExtensionMessageResponse } from "./messages.js";
+const DEFAULT_WORKER_API_BASE_URL = "https://chain-short-man.wjws9608.workers.dev";
+
+type CachedBlockState = {
+  state: "LOCKED" | "UNLOCKED";
+  syncedAt: number | null;
+  source: "worker" | "cache" | "admin";
+};
+
+type ExtensionConfig = {
+  apiBaseUrl: string;
+  groupId: string;
+  extensionUserId: string | null;
+  discordUserId: string | null;
+  sessionToken: string | null;
+  authRequestId: string | null;
+};
+
+type ExtensionMessageResponse =
+  | { ok: true; data: unknown | null }
+  | { ok: false; message: string };
 
 const statusText = getRequiredElement<HTMLParagraphElement>("status-text");
 const identityText = getRequiredElement<HTMLParagraphElement>("identity-text");

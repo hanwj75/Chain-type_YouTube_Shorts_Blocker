@@ -1,14 +1,40 @@
-import type { CachedBlockState } from "./config.js";
-import {
-  buildShortsHideCss,
-  decideShortsBlocking,
-  shouldBlockShorts,
-  shouldReapplyBlockingForNavigation,
-} from "./index.js";
-import type { ExtensionMessageResponse, ExtensionTabMessage } from "./messages.js";
-
 const STYLE_ELEMENT_ID = "shorts-blocker-style";
 const HIDE_SHORTS_ATTRIBUTE = "hide-shorts";
+const SHORTS_REDIRECT_PATH = "/feed/subscriptions";
+const SHORTS_HIDE_SELECTORS = [
+  'a[href^="/shorts/"]',
+  'a[title="Shorts"]',
+  'a[aria-label="Shorts"]',
+  'ytd-guide-entry-renderer:has(yt-formatted-string[title="Shorts"])',
+  'ytd-mini-guide-entry-renderer:has(yt-formatted-string[title="Shorts"])',
+  "ytd-reel-shelf-renderer",
+  "ytd-rich-shelf-renderer:has(ytd-reel-shelf-renderer)",
+  "ytd-rich-section-renderer:has(ytd-reel-shelf-renderer)",
+  'ytd-guide-entry-renderer:has(a[href^="/shorts/"])',
+  'ytd-mini-guide-entry-renderer:has(a[href^="/shorts/"])',
+  "ytm-shorts-lockup-view-model",
+] as const;
+
+type CachedBlockState = {
+  state: "LOCKED" | "UNLOCKED";
+  syncedAt: number | null;
+  source: "worker" | "cache" | "admin";
+};
+
+type ExtensionMessageResponse =
+  | { ok: true; data: unknown | null }
+  | { ok: false; message: string };
+
+type ExtensionTabMessage = {
+  type: "BLOCK_STATE_UPDATED";
+  payload: CachedBlockState;
+};
+
+type ShortsBlockDecision = {
+  shouldHideUi: boolean;
+  shouldRedirect: boolean;
+  redirectTarget: string | null;
+};
 
 let currentState: CachedBlockState | null = null;
 let lastKnownUrl = location.href;
@@ -155,12 +181,7 @@ function installMutationObserver(): void {
 }
 
 function onUrlChanged(): void {
-  if (
-    shouldReapplyBlockingForNavigation({
-      previousUrl: lastKnownUrl,
-      nextUrl: location.href,
-    })
-  ) {
+  if (shouldReapplyBlockingForNavigation({ previousUrl: lastKnownUrl, nextUrl: location.href })) {
     lastKnownUrl = location.href;
     scheduleApply();
   }
@@ -206,4 +227,79 @@ function isWatchPageShowingShortsContext(): boolean {
       document.querySelector("ytd-shorts") ||
       document.querySelector("ytd-reel-video-renderer"),
   );
+}
+
+function isShortsPath(pathname: string, search = "", href = ""): boolean {
+  if (pathname.startsWith("/shorts/")) {
+    return true;
+  }
+
+  if (pathname === "/watch") {
+    const params = new URLSearchParams(search);
+    const shortsContextParamKeys = ["shorts", "shortsui"];
+
+    if (shortsContextParamKeys.some((key) => params.has(key))) {
+      return true;
+    }
+
+    if (href.toLowerCase().includes("shorts")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function buildShortsHideCss(): string {
+  return `${SHORTS_HIDE_SELECTORS.join(",")} { display: none !important; }`;
+}
+
+function shouldBlockShorts(state: CachedBlockState["state"] | null): boolean {
+  return state === "LOCKED";
+}
+
+function decideShortsBlocking({
+  state,
+  pathname,
+  search = "",
+  href = "",
+}: {
+  state: CachedBlockState["state"] | null;
+  pathname: string;
+  search?: string;
+  href?: string;
+}): ShortsBlockDecision {
+  const blocked = shouldBlockShorts(state);
+
+  if (!blocked) {
+    return {
+      shouldHideUi: false,
+      shouldRedirect: false,
+      redirectTarget: null,
+    };
+  }
+
+  if (isShortsPath(pathname, search, href)) {
+    return {
+      shouldHideUi: true,
+      shouldRedirect: true,
+      redirectTarget: SHORTS_REDIRECT_PATH,
+    };
+  }
+
+  return {
+    shouldHideUi: true,
+    shouldRedirect: false,
+    redirectTarget: null,
+  };
+}
+
+function shouldReapplyBlockingForNavigation({
+  previousUrl,
+  nextUrl,
+}: {
+  previousUrl: string;
+  nextUrl: string;
+}): boolean {
+  return previousUrl !== nextUrl;
 }

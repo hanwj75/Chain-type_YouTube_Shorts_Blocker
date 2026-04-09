@@ -17,10 +17,10 @@ void initializePopup();
 async function initializePopup(): Promise<void> {
   const config = await loadConfig();
   await refreshStatus();
-  await refreshIdentity();
+  const sessionGroupId = await refreshIdentity();
 
   workerUrlText.textContent = config?.apiBaseUrl || DEFAULT_WORKER_API_BASE_URL;
-  groupIdText.textContent = config?.groupId?.trim() || "미설정";
+  groupIdText.textContent = sessionGroupId || config?.groupId?.trim() || "미설정";
 
   if (!config?.sessionToken) {
     void ensureDiscordOAuthStarted();
@@ -116,14 +116,14 @@ async function refreshStatus(): Promise<void> {
   updateStatusText(response.data as CachedBlockState | null);
 }
 
-async function refreshIdentity(): Promise<void> {
+async function refreshIdentity(): Promise<string | null> {
   const response = (await chrome.runtime.sendMessage({
     type: "GET_SESSION",
   })) as ExtensionMessageResponse;
 
   if (!response.ok || !response.data) {
     identityText.textContent = "로그인되지 않음.";
-    return;
+    return null;
   }
 
   const session = response.data as unknown as {
@@ -133,8 +133,8 @@ async function refreshIdentity(): Promise<void> {
     groupId?: string | null;
   };
 
-  groupIdText.textContent = session.groupId?.trim() || groupIdText.textContent || "미설정";
   identityText.textContent = `디스코드 ${session.discordUserId}, 확장 ${session.extensionUserId}, 만료 ${new Date(session.expiresAt).toLocaleString()}`;
+  return session.groupId?.trim() || null;
 }
 
 function updateStatusText(state: CachedBlockState | null): void {

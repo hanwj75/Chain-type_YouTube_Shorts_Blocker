@@ -37,6 +37,12 @@ async function initializePopup(): Promise<void> {
   workerUrlText.textContent = config?.apiBaseUrl || DEFAULT_WORKER_API_BASE_URL;
   groupIdText.textContent = sessionGroupId || config?.groupId?.trim() || "미설정";
 
+  if (!config?.sessionToken && config?.authRequestId) {
+    statusText.textContent = "디스코드 로그인 진행 중입니다. 완료되면 자동으로 반영됩니다.";
+    startAuthPolling();
+    return;
+  }
+
   if (!config?.sessionToken) {
     void ensureDiscordOAuthStarted();
   }

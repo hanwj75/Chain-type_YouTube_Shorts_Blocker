@@ -145,6 +145,7 @@ const ctx: ExecutionContext = {
 const run = async (): Promise<void> => {
   const env = createTestEnv();
   await createGroup(env, "group-1", ["A", "B", "C"]);
+  await runCorsFallbackTest();
   await runGroupDeleteTest(env);
   await runDiscordGroupCreationFlowTest();
   await runDiscordCommandRegistrationTest();
@@ -300,7 +301,7 @@ const run = async (): Promise<void> => {
   console.log("worker tests passed");
 };
 
-const createTestEnv = (): WorkerEnv => {
+const createTestEnv = (overrides: Partial<WorkerEnv> = {}): WorkerEnv => {
   const env = {
     ALLOWED_ORIGINS: "*",
     ADMIN_API_TOKEN: "admin-token",
@@ -309,6 +310,7 @@ const createTestEnv = (): WorkerEnv => {
     DISCORD_CLIENT_ID: "client-id",
     DISCORD_CLIENT_SECRET: "client-secret",
     DISCORD_OAUTH_REDIRECT_URI: "https://worker.test/auth/discord/callback",
+    ...overrides,
   } as WorkerEnv;
 
   env.GROUP_DO = new MemoryGroupDurableObjectNamespace(env);
@@ -316,6 +318,24 @@ const createTestEnv = (): WorkerEnv => {
   env.GROUP_REGISTRY_DO = new MemoryGroupRegistryDurableObjectNamespace();
 
   return env;
+};
+
+const runCorsFallbackTest = async (): Promise<void> => {
+  const env = createTestEnv({
+    ALLOWED_ORIGINS: "chrome-extension://__YOUR_EXTENSION_ID__",
+  });
+  const requestOrigin = "chrome-extension://ecnfmmlgjbgmdjiiibjfkogmaopdadoo";
+  const response = await callWorker(env, "GET", "/health", {
+    headers: {
+      origin: requestOrigin,
+    },
+  });
+
+  assert(response.status === 200, "cors fallback health request must succeed");
+  assert(
+    response.headers.get("access-control-allow-origin") === requestOrigin,
+    "placeholder allowed origins must fall back to request origin",
+  );
 };
 
 const runDiscordInteractionFlowTest = async (): Promise<void> => {

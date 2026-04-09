@@ -91,14 +91,7 @@ const getAllowedOrigin = (
   requestOrigin: string | null,
   allowedOrigins?: string,
 ): string => {
-  if (!allowedOrigins || allowedOrigins.trim() === "") {
-    return "*";
-  }
-
-  const origins = allowedOrigins
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const origins = normalizeAllowedOrigins(allowedOrigins);
 
   if (origins.includes("*")) {
     return "*";
@@ -108,5 +101,39 @@ const getAllowedOrigin = (
     return requestOrigin;
   }
 
-  return origins[0] ?? "*";
+  if (requestOrigin && origins.length === 0 && isExtensionOrigin(requestOrigin)) {
+    return requestOrigin;
+  }
+
+  return origins[0] ?? (requestOrigin && isExtensionOrigin(requestOrigin) ? requestOrigin : "*");
+};
+
+const normalizeAllowedOrigins = (allowedOrigins?: string): string[] => {
+  if (!allowedOrigins || allowedOrigins.trim() === "") {
+    return [];
+  }
+
+  return allowedOrigins
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .filter((origin) => !isPlaceholderOrigin(origin))
+    .filter((origin) => origin === "*" || isValidOrigin(origin));
+};
+
+const isPlaceholderOrigin = (origin: string): boolean => {
+  return origin.includes("__YOUR_EXTENSION_ID__") || origin.includes("<your-subdomain>");
+};
+
+const isValidOrigin = (origin: string): boolean => {
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === "chrome-extension:" || parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const isExtensionOrigin = (origin: string): boolean => {
+  return origin.startsWith("chrome-extension://");
 };
